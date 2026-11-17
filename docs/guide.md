@@ -58,12 +58,29 @@ dsh plugin add @leonhardthust/dsh-notifier --profile <profile名>
 
 ## 第二步：配置第一个通知渠道
 
-打开：
+人在电脑前，只想让 DSH 跑完时弹个提醒，用桌面通知就够了：
 
 ```text
 DSH Sidebar
 → 通知与控制
-→ Channels / 通知渠道
+→ 桌面通知
+→ 打开「在这台电脑上显示通知」，点「发送测试通知」
+```
+
+桌面通知只在本机显示，不需要任何账号或凭证：
+
+- Windows 10/11：系统自带的 Toast 通知，装了 DSH 桌面版时会显示为 DeepSeek Harness。不需要额外安装 PowerShell 模块，也不写注册表。
+- Linux：支持 GNOME 和 KDE Plasma，走 `notify-send`，没有时回落到 `gdbus`。其他桌面环境按 freedesktop 标准尝试，未专门适配。
+- macOS：系统通知中心（`osascript`）。
+
+没看到弹窗时，先检查系统的勿扰/专注模式。
+
+人不在电脑前，就要配远程通知渠道：
+
+```text
+DSH Sidebar
+→ 通知与控制
+→ 远程通知渠道
 ```
 
 选一个你已经在用的渠道，例如 Telegram、飞书、QQ、PushPlus、Bark、Webhook 等。

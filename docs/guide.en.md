@@ -44,12 +44,29 @@ If the version looks correct but behavior is old, see [upgrade-guide.en.md](upgr
 
 ## 2. Configure your first notification channel
 
-Open:
+If you are at the computer and just want a pop-up when DSH finishes, desktop notifications are enough:
 
 ```text
 DSH Sidebar
 → Notify & Control
-→ Channels
+→ Desktop notifications
+→ turn on "Show notifications on this computer", then send a test notification
+```
+
+Desktop notifications stay on this machine and need no account or credentials:
+
+- Windows 10/11: the built-in toast notifications. With DSH desktop installed they appear as DeepSeek Harness. No PowerShell module is needed and nothing is written to the registry.
+- Linux: GNOME and KDE Plasma are supported through `notify-send`, falling back to `gdbus`. Other desktop environments get the freedesktop standard path without specific adaptation.
+- macOS: Notification Center via `osascript`.
+
+If nothing appears, check Do Not Disturb or Focus first.
+
+If you want notifications while away from the computer, set up a remote channel:
+
+```text
+DSH Sidebar
+→ Notify & Control
+→ Remote channels
 ```
 
 Pick a service you already use, enter its credentials, then choose **Save and test**.

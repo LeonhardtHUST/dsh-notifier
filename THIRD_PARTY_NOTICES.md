@@ -67,6 +67,32 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 ```
 
+## SingleOne/dsh-notify-center（MIT License）
+
+- 来源仓库：https://github.com/SingleOne/dsh-notify-center
+- 参考文件：`src/local.ts`
+- 移植范围：Windows 原生 Toast 的做法（Windows PowerShell 5.1 加载 WinRT
+  `ToastNotificationManager`、标题正文以 UTF-8 base64 传入脚本、NotifyIcon 气泡兜底），
+  落在 `src/adapters/desktop.mjs`。本仓库没有沿用其 AUMID 注册表项和开始菜单快捷方式，
+  改为复用 DSH 桌面版已注册的 `com.deepseek.dsh`，否则回落 Windows PowerShell 的 AUMID。
+- 原许可证（MIT）版权声明：
+
+```
+MIT License
+
+Copyright (c) 2026 SingleOne
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+```
+
 ## 未参考代码、仅对标叙事
 
 - caronc/apprise（MIT）：作为「通知底座」行业先例做架构对标，未移植任何代码。

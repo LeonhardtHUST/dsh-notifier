@@ -36,6 +36,18 @@ Cordis context
 5. Retry policy is level-dependent: time-sensitive retries most, active retries once, passive does not retry by default.
 6. Broadcast outcomes feed the ledger, admin event hub, and optional `dsh-notifier/sent` emission independently.
 
+## Local Notification Surface
+
+Desktop notification and terminal bell rows carry `scope: 'local'`; every other channel row is `scope: 'remote'`. `src/control-surface/local.mjs` turns the two local rows into a switch-and-options view without adding a second write path:
+
+- `local.get` returns `{ epoch, revision, platform: { os, desktop, support, backend, detail: { en, zh } }, desktop: { type, enabled, active, managedBy, sound, health }, bell: { type, enabled, active, managedBy, count, health } }`.
+- `local.save` accepts `{ type: 'desktop' | 'bell', enabled, options? }` (`sound` for desktop, `count` for bell) and returns `{ type, enabled, applied, applyMode }`.
+- `surface.home` adds a reduced `local` summary (`platform.os/support`, `desktop.enabled/active`, `bell.enabled/active`). If the local projection fails, the field is omitted instead of failing the home projection.
+
+The surface reuses the canonical outbound overlay `channel:<type>:outbound` and the shared outbound transaction (validate, resolve, persist, hot swap). There is no separate local-notification store and no second runtime authority. Disabling revokes the overlay. A row configured in `cordis.patch.yml` is the base configuration: it reports `managedBy: 'yaml'`, the Native UI disables the control, and `local.save` with `enabled: false` fails with the public code `dsh-notifier/not-supported`. The read that decides whether an overlay can be revoked is fail-closed: a store read error surfaces as `storage-failed` instead of "nothing configured", so a revoke cannot report success while an unread overlay later returns.
+
+`local.get` and `local.save` are methods on the existing Native connection RPC channel. They use the same admission and envelope as `channels.*`, and add no authentication mode, no HTTP route, and no listener. The loopback Advanced Console and its Bearer gate are unchanged.
+
 ## Inbound Trust Flow
 
 ```text
