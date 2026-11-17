@@ -297,7 +297,7 @@ test('GitHub outputs are appended without breaking multiline values', (t) => {
   appendGithubOutputs({ should_release: 'true' }, file)
   const lines = readFileSync(file, 'utf8').trim().split('\n')
   assert.deepEqual(lines, ['action=publish', 'reason=line one line two', 'should_release=true'])
-  assert.equal(appendGithubOutputs({ ignored: 'x' }, undefined), false)
+  assert.equal(appendGithubOutputs({ ignored: 'x' }, null), false)
 })
 
 test('pack guard fixture follows the repo pack JSON shape', (t) => {
