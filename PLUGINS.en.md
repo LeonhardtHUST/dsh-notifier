@@ -1,7 +1,7 @@
-# PLUGINS.en.md — Calling dsh-notifier from your plugin
+# PLUGINS.en.md — Calling @leonhardthust/dsh-notifier from your plugin
 
 > 中文: [PLUGINS.md](PLUGINS.md)
-> Since dsh-notifier v0.6 there are two surfaces: **outbound** — the injected `ctx.notifier` service (push), and **inbound** — the `dsh-notifier/sent` event (subscribe).
+> Since the v0.6 public surface, `@leonhardthust/dsh-notifier` (maintained fork) exposes two surfaces: **outbound** — the injected `ctx.notifier` service (push), and **inbound** — the `dsh-notifier/sent` event (subscribe). The event name is part of the contract and does not change with the scoped package name.
 > This document is for **consumer plugin authors**. Public API version: `0.7` (`ctx.notifier.version`; bumped only on a public-surface break, independent of the package version).
 
 ## 30-second quick start
@@ -18,21 +18,21 @@ export function apply(ctx) {
 }
 ```
 
-## Getting the service: static declaration is the only working form (verified on device)
+## Getting the service: static declaration recommended, ctx.inject works for optional deps
 
-> Decided by on-device verification on 2026-08-16 (DSH 0.1.0-rc.6 / Node 24): the host cordis **only honors a static `inject` declaration**. The two alternative forms below were measured as unusable on rc.6.
+Verified on DSH `0.2.2-rc.3` (Cordis 4.1.0):
 
-| Form | On-device result | Notes |
+| Form | rc.3 result | Notes |
 |---|---|---|
-| ✅ Static `export const inject = ['notifier']` | **Works (the only usable form)** | The service is ready when apply runs; the probe resolved a real service with `version=0.6` |
-| ❌ Callback-style `ctx.inject(['notifier'], cb)` | **Callback never fires** | The API exists but the callback never runs and the waiting branch hangs — do not use |
-| ❌ Probe-style `typeof ctx.notifier?.push === 'function'` | **Throws immediately** | Without a declared inject, accessing the service property is blocked by the host: `cannot get property "notifier" without inject` |
+| ✅ Static `export const inject = ['notifier']` | **Recommended** | The service is ready when apply runs (the host guarantees the wait); a probe resolved the real service |
+| ✅ Callback-style `ctx.inject(['notifier'], cb)` | **Works (optional dependency)** | This plugin's own Native mount uses it to wait for `connection`/`webServer`; the callback runs once the service exists and degrades when it never does |
+| ❌ Accessing `ctx.notifier` without a declaration | **Throws** | Without a declared inject, accessing the service property is blocked by the host: `cannot get property "notifier" without inject` |
 
-**Why the static declaration is safe**: dsh-notifier v0.6 promises to `ctx.provide` the service in every shape (including `enabled: false`, zero channels, top-level disable — as a no-op stub when disabled). As long as dsh-notifier is **installed**, the static declaration can never stall startup. The reverse is also true: if you declare it statically while dsh-notifier is **not installed**, the host will wait for the service and stay pending (blocking startup) — list dsh-notifier as an install prerequisite of your plugin and state that in your docs.
+**Why static is recommended**: `@leonhardthust/dsh-notifier` promises to `ctx.provide` the service in every shape (including `enabled: false`, zero channels, top-level disable — as a no-op stub when disabled). As long as it is **installed**, the static declaration can never stall startup. The reverse is also true: declaring it statically while the package is **not installed** makes the host wait and stay pending (blocking startup) — list the package as an install prerequisite and state that in your docs. If you genuinely treat it as an optional dependency, use `ctx.inject(['notifier'], cb)` instead of undeclared direct access.
 
-**Likewise**: to register tools you must declare `inject: ['tools']` (rc.6 requires a static declaration for `ctx.tools` too; accessing it without one throws). `ctx.on` (event subscription) needs no declaration.
+**Likewise**: to register tools you must declare `inject: ['tools']` (accessing `ctx.tools` without one throws). `ctx.on` (event subscription) needs no declaration.
 
-Importing from the package root only guarantees the DSH plugin contract `{ name, inject, apply }`. Internal constructors (the store, the token vault, the public facade) are not consumer API; they are exposed only through the explicit `dsh-notifier/internal` subpath for local tests and build tooling.
+Importing from the package root only guarantees the DSH plugin contract `{ name, inject, apply }`. Internal constructors (the store, the token vault, the public facade) are not consumer API; they are exposed only through the explicit `@leonhardthust/dsh-notifier/internal` subpath for local tests and build tooling.
 
 ## push API
 
@@ -139,12 +139,12 @@ export function apply(ctx) {
 }
 ```
 
-## Unit testing: `dsh-notifier/testing`
+## Unit testing: `@leonhardthust/dsh-notifier/testing`
 
 Consumer plugin tests do not need a hand-written stub:
 
 ```js
-import { createFakeNotifier } from 'dsh-notifier/testing'
+import { createFakeNotifier } from '@leonhardthust/dsh-notifier/testing'
 
 const fake = createFakeNotifier({ sourceName: 'my-plugin', now: () => 0 })
 // Inject the fake as ctx.notifier into your apply()
@@ -159,26 +159,27 @@ The behavior spec mirrors the real facade item by item: `push` **never rejects**
 
 Two deliberate differences (not defects): the fake does no length clamping, rate limiting or budget accounting (the real resource semantics are covered by the real facade contract tests), and it does not provide `enabled()` (a host diagnostics surface; detect capability with `typeof notifier?.push === 'function'`). The fake **does not emit** the `sent` event — the event surface is not part of this tool; test the event side with your own `ctx` stub.
 
-## TypeScript: `dsh-notifier/types`
+## TypeScript: `@leonhardthust/dsh-notifier/types`
 
 When writing a consumer plugin in TS, take the types from the type-only subpath:
 
 ```ts
-import type { NotifierFacade, NotifyMessage, PushResult } from 'dsh-notifier/types'
+import type { NotifierFacade, NotifyMessage, PushResult } from '@leonhardthust/dsh-notifier/types'
 ```
 
 It exports `NotifyLevel` / `NotifyMessage` / `NotifyOptions` / `PushResult` / `PushFailure` / `NotifierSource` / `NotifierFacade` / `SentEventRecord` / `FakeNotifier` and more, aligned item by item with the runtime public surface (only real fields are declared; internal options are not exposed). `NotifierFacade.version` is the literal `'0.7'`, from the same source as `ctx.notifier.version`. `SentEventRecord` stays metadata-only — **without** `title`/`content`/raw error text.
 
-This is an explicit type-only subpath: the package root (`dsh-notifier`) is the DSH plugin contract itself and has **no** root `"types"` field (the root JS export surface is far larger than the notifier public surface). Always import `from 'dsh-notifier/types'`.
+This is an explicit type-only subpath: the package root (`@leonhardthust/dsh-notifier`) is the DSH plugin contract itself and has **no** root `"types"` field (the root JS export surface is far larger than the notifier public surface). Always import `from '@leonhardthust/dsh-notifier/types'`.
 
 ## On-device verification record
 
-- **2026-08-16 · DSH 0.1.0-rc.6 (web profile, Node 24)**: features A/B both confirmed — a static-inject consumer resolved a real service with `version=0.6` (not a stub); the `dsh-notifier/sent` event was visible across plugins (15/15, complete payload shape); the zero-channel semantics matched the design (`ok:false` with three empty arrays; no crash, no startup block). It also settled that the callback-style `ctx.inject` never fires and that accessing a service property without a declaration throws — every recipe in this document was therefore finalized on the static declaration. Install note: when the host manages dependencies with pnpm, manually overwriting `node_modules/dsh-notifier` is rolled back; upgrade with `dsh plugin add file:<path>` instead.
+- **2026-11-17 · DSH 0.2.2-rc.3 (Desktop web + headless, disposable DSH_HOME)**: the plugin mounted `ctx.inject(['connection','webServer'], …)` in the web profile and served `/dsh-notifier` behind admission (401 unauthenticated); the headless profile activated without connection/webServer and delivered a local webhook notification (19/19 host smoke). This is the current evidence that static inject is still recommended and callback-style `ctx.inject` works on rc.3; the old rc.6 “callback never fires” result applies only to that older line.
+- **2026-08-16 · DSH 0.1.0-rc.6 (historical)**: a static-inject consumer resolved a real service, the `dsh-notifier/sent` event was visible across plugins, and the zero-channel semantics matched the design; callback-style `ctx.inject` did not fire on that line. Install note: when the host manages dependencies with pnpm, manually overwriting `node_modules` is rolled back; upgrade through the DSH CLI plugin command instead.
 
 ## FAQ
 
-**Q: Why not `import dsh-notifier` directly?**
-What you import is the constructor — you would have to parse config and build your own instance: two configs, two ledgers, separate rate limiting. Service injection shares all of dsh-notifier's infrastructure (channel config, routing, ledger, rate limiting, flush).
+**Q: Why not `import @leonhardthust/dsh-notifier` directly?**
+What you import is the constructor — you would have to parse config and build your own instance: two configs, two ledgers, separate rate limiting. Service injection shares all of the package's infrastructure (channel config, routing, ledger, rate limiting, flush).
 
 **Q: Can my plugin receive the sent event for its own push?**
 Yes (broadcast is unfiltered). So pushing inside the listener = an infinite loop, which the listener rule forbids.
@@ -187,4 +188,4 @@ Yes (broadcast is unfiltered). So pushing inside the listener = an infinite loop
 It goes into the notification ledger for the user to audit; using your plugin name is recommended. Maliciously forging another sourceName is an in-process trust-domain issue (the same level as inject), and is not signed.
 
 **Q: Can I import the package root to get a constructor?**
-The package root exports only the DSH plugin entry (`name`, `inject`, `apply`). If a test or build tool genuinely needs an internal constructor, use the explicit `dsh-notifier/internal` path; this is not OS-level isolation, and a malicious in-process plugin is still inside the host trust boundary.
+The package root exports only the DSH plugin entry (`name`, `inject`, `apply`). If a test or build tool genuinely needs an internal constructor, use the explicit `@leonhardthust/dsh-notifier/internal` path; this is not OS-level isolation, and a malicious in-process plugin is still inside the host trust boundary.

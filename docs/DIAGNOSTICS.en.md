@@ -11,9 +11,9 @@ Record:
 ```text
 OS
 Node
-DSH/Harness
+DSH/Harness (this package declares 0.2.2-rc.3 only)
 DSH profile
-dsh-notifier version
+@leonhardthust/dsh-notifier version
 install source
 channel
 direction/capability
@@ -22,6 +22,8 @@ reproducibility
 ```
 
 Install source must be explicit: registry, `file:`, Git, manual node_modules, or unknown.
+If the original `dsh-notifier` package is still installed alongside the fork, record the
+co-install and remove the original first per [upgrade-guide.en.md](upgrade-guide.en.md).
 
 ## Minimal reproduction
 
@@ -48,9 +50,9 @@ Examples:
 
 ```bash
 node -v
-npm ls dsh-notifier
-pnpm why dsh-notifier
-npm view dsh-notifier version
+npm ls @leonhardthust/dsh-notifier
+pnpm why @leonhardthust/dsh-notifier
+npm view @leonhardthust/dsh-notifier version
 ```
 
 Do not guess the active package from the repository checkout; inspect the dependency tree used by the active DSH profile.
@@ -58,7 +60,7 @@ Do not guess the active package from the repository checkout; inspect the depend
 ## Native UI
 
 Capture:
-- Plugins entry present?
+- Plugins entry present for @leonhardthust/dsh-notifier?
 - Notify & Control sidebar entry present?
 - installed `client.js` present?
 - client/slot/module error?
@@ -103,6 +105,9 @@ Report status only:
 ```text
 file exists/readable/writable
 bootStatus
+schemaVersion / namespace matches the current package?
+legacyUnknown (old-namespace isolation) hit?
+state.json.pre-v0.14-legacy.<timestamp> forensic copy present?
 disk/permission condition
 STATE_BUSY / STATE_CORRUPT / STATE_READ_FAILED / STATE_WRITE_FAILED
 ```
@@ -129,8 +134,9 @@ Never post Authorization headers.
 - Node:
 - DSH/Harness:
 - Profile:
-- dsh-notifier:
+- @leonhardthust/dsh-notifier:
 - Install source:
+- Original dsh-notifier co-installed: yes/no
 
 ## Scope
 - Channel:
@@ -160,10 +166,12 @@ Never post Authorization headers.
 ## Checks already completed
 - [ ] actual package version verified
 - [ ] install source checked
+- [ ] original dsh-notifier package confirmed absent
 - [ ] correct profile confirmed
 - [ ] DSH restarted after package upgrade
 - [ ] stale file: install checked
 - [ ] restartPending checked where relevant
+- [ ] legacy state isolation / pre-v0.14 backup checked when upgrading
 - [ ] secrets redacted
 
 ## Local fixes attempted

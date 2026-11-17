@@ -1,14 +1,16 @@
-# Consumer demo — 从另一个插件调用 dsh-notifier
+# Consumer demo — 从另一个插件调用 @leonhardthust/dsh-notifier
 
 最小消费方插件示例：`examples/` 目录**不随 npm 包发布**，仅作接入参考。完整公共契约见仓库根的 [PLUGINS.md](../../PLUGINS.md)。
 
-## 1. 安装 dsh-notifier
+## 1. 安装 @leonhardthust/dsh-notifier
 
-把 dsh-notifier 列为你的插件安装前置（服务和限流/账本/flush 都由它提供）：
+把 `@leonhardthust/dsh-notifier` 列为你的插件安装前置（服务和限流/账本/flush 都由它提供）：
 
 ```bash
-dsh plugin add dsh-notifier
+dsh plugin add @leonhardthust/dsh-notifier
 ```
+
+原包 `dsh-notifier` 不要与本 fork 同时安装。
 
 ## 2. 获取服务：静态 `inject` 是唯一形态
 
@@ -22,7 +24,7 @@ export function apply(ctx) {
 }
 ```
 
-回调式 `ctx.inject(['notifier'], cb)` 与未声明直接访问 `ctx.notifier` 在真机均不可用——见 PLUGINS.md「服务获取」。
+回调式 `ctx.inject(['notifier'], cb)` 在 DSH 0.2.2-rc.3 可用，适合把本包当可选依赖；未声明 inject 直接访问 `ctx.notifier` 仍会抛错。见 PLUGINS.md「服务获取」。
 
 ## 3. push 推送
 
@@ -49,12 +51,12 @@ ctx.on?.('dsh-notifier/sent', (record) => {
 
 **军规**：监听器必须 O(1) 立即返回；**禁止在 `sent` handler 里再次 push**——会形成通知回环（限流兜底但不该发生）。
 
-## 5. 单测：`dsh-notifier/testing`
+## 5. 单测：`@leonhardthust/dsh-notifier/testing`
 
 消费方单测不必手写 stub：
 
 ```js
-import { createFakeNotifier } from 'dsh-notifier/testing'
+import { createFakeNotifier } from '@leonhardthust/dsh-notifier/testing'
 
 const fake = createFakeNotifier({ sourceName: 'consumer-demo', now: () => 0 })
 const result = await fake.push({ title: 'T', content: 'C' }, { sourceName: 'consumer-demo' })
@@ -63,12 +65,12 @@ const result = await fake.push({ title: 'T', content: 'C' }, { sourceName: 'cons
 
 fake `push` 同样永不 reject；`options.simulate: 'rate-limited' | 'disabled' | 'budget' | 'busy'` 可回放失败分支。
 
-## 6. 类型：`dsh-notifier/types`
+## 6. 类型：`@leonhardthust/dsh-notifier/types`
 
 用 TypeScript 写插件时，类型从 type-only 子路径取：
 
 ```ts
-import type { NotifierFacade, NotifyMessage, PushResult } from 'dsh-notifier/types'
+import type { NotifierFacade, NotifyMessage, PushResult } from '@leonhardthust/dsh-notifier/types'
 ```
 
-`SentEventRecord` 同样是 metadata-only 类型（无 `title`/`content`）。入口刻意不设 root `"types"`，请始终 `from 'dsh-notifier/types'`。
+`SentEventRecord` 同样是 metadata-only 类型（无 `title`/`content`）。入口刻意不设 root `"types"`，请始终 `from '@leonhardthust/dsh-notifier/types'`。

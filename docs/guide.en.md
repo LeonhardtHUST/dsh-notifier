@@ -19,21 +19,25 @@ For a first install, get **notifications** working before adding remote control.
 
 Copy this to an AI/agent with terminal access:
 
-> Install or upgrade the latest stable dsh-notifier on this machine. First detect the active DSH profile and current install source, verify that the installed DSH/Node versions are compatible, and preserve the current configuration. Do not modify unrelated plugins or print any token/secret. Install from the official package, restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry, then report the commands you ran, the result, and any remaining problem. Project: `https://github.com/THEWOLFWALKER/dsh-notifier`
+> Install or upgrade `@leonhardthust/dsh-notifier` on this machine. First detect the active DSH profile and current install source, verify the installed DSH is `0.2.2-rc.3` and Node is supported, and preserve the current configuration. Do not modify unrelated plugins or print any token/secret. If the original `dsh-notifier` package is present, confirm and remove it. Restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry; when upgrading 0.13.x to 0.14.0, back up the old state first and expect to re-pair/reconfigure. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
 
 Full procedure: [AI_INSTALL.en.md](AI_INSTALL.en.md).
 
 ### Manual install
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile-name>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
 ```
+
+This package declares exact compatibility with DSH `0.2.2-rc.3` only (`engines.dsh`); other
+releases are rejected by the install preflight. Do not install the original `dsh-notifier`
+package alongside the fork: both contend for the same plugin id and state directory.
 
 Restart DSH once so the Host plugin and `client.js` are loaded.
 
 Verify:
 1. **Notify & Control** appears in the sidebar.
-2. `dsh-notifier` appears under Plugins.
+2. `@leonhardthust/dsh-notifier` appears under Plugins.
 3. The actual installed version is the release you expect.
 
 If the version looks correct but behavior is old, see [upgrade-guide.en.md](upgrade-guide.en.md) and check for stale `file:` installs.
@@ -201,10 +205,27 @@ Avoid manually editing a live `state.json`; let the existing store preserve lock
 ## 10. Upgrade
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile-name>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
 ```
 
-Restart once after installing a new package version. See [upgrade-guide.en.md](upgrade-guide.en.md) for stale installs and rollback.
+Restart once after installing a new package version.
+
+### Upgrade 0.13.x to 0.14.0
+
+0.14.0 uses a new state schema/namespace. Before upgrading, back up
+`$DSH_HOME/dsh-notifier/state.json` (or the whole state directory).
+
+If the plugin reports that the old state is untrusted after the upgrade, bindings, pending
+approvals, pairing codes and credentials from the old namespace are not treated as
+authority. On the first application write the store creates
+`state.json.pre-v0.14-legacy.<timestamp>` and keeps the original file. Then:
+
+1. generate a new pairing code and `/pair` from the phone;
+2. re-save outbound/inbound channel settings or re-scan the credential;
+3. let the agent re-raise any pending approval that was lost.
+
+Do not hand-edit `state.json` or fabricate a `__schema` marker. See
+[upgrade-guide.en.md](upgrade-guide.en.md) for stale installs and rollback.
 
 ## If something is wrong
 

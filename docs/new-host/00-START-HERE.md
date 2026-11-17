@@ -1,5 +1,7 @@
 # 全任务交接入口
 
+> **历史说明（2026-11-17）**：本目录是 2026-10-31 DSH `0.2.1-rc.5` 任务包（T00-T29 计划）的归档参考，保留当时的计划、审计和证据，便于追溯，不是当前执行入口。当前目标、授权和进度以根 [HANDOFF.md](../../HANDOFF.md) 与 `.agents/workstreams/rc3-*.md` 为准；[STATUS.json](STATUS.json) 保留历史状态，不表示 T05-T29 已完成。现行宿主目标是 DSH `0.2.2-rc.3`，见 [compatibility-matrix.md](../compatibility-matrix.md)。本文件以下内容保持归档原样。
+
 更新时间：2026-10-31。交付状态：**设计/计划已建立，产品实现未开始**。
 
 新 agent 从本文件开始，不从历史 HANDOFF 或 dev 继续。用户授权目标：完成新版对齐、可靠性与已审缺陷修复的全部阶段；可运行本地代码/测试/构建和真实 DSH。**没有真实 IM/provider 账号或设备，不应要求维护者提供它们作为完成本地任务的条件。** 用户最新已授权以main重建dev和每阶段推送dev，具体安全步骤与review/neat门槛见[DELIVERY-POLICY.md](DELIVERY-POLICY.md)。不合并main、不发包、不真实投递。

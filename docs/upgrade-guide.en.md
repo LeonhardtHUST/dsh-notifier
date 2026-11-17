@@ -1,6 +1,6 @@
 # dsh-notifier Upgrade Guide
 
-> For DSH users: update, verify the installed build, migrate from v0.12.1 to v0.13, triage stale installs, and roll back.
+> For DSH users: update, verify the installed build, migrate 0.13.x to 0.14.0, triage stale installs, and roll back.
 >
 > 中文版：[`upgrade-guide.md`](upgrade-guide.md)
 
@@ -9,28 +9,34 @@
 Recommended:
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile-name>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
 ```
 
 If your DSH CLI does not accept `@latest`:
 
 ```bash
-dsh plugin add dsh-notifier --profile <profile-name>
+dsh plugin add @leonhardthust/dsh-notifier --profile <profile-name>
 ```
 
 Or manage it from the DSH root:
 
 ```bash
-npm install dsh-notifier@latest
+npm install @leonhardthust/dsh-notifier@latest
 # or
-pnpm add dsh-notifier@latest
+pnpm add @leonhardthust/dsh-notifier@latest
 ```
+
+This package is the maintained fork (`https://github.com/LeonhardtHUST/dsh-notifier`); the
+original project is `https://github.com/THEWOLFWALKER/dsh-notifier` and attribution is
+preserved. Do not install the original `dsh-notifier` package alongside the fork: both
+contend for the same plugin id, service names, and state directory. Remove the original
+first when migrating.
 
 ### Restart once after installing the new package
 
 Restart DSH once so the new Host plugin and `client.js` are loaded.
 
-That restart is required to **load the upgrade**. It does not mean v0.13 outbound edits are restart-bound: once v0.13 is running, outbound channel saves Hot Apply through the shared canonical runtime truth.
+That restart is required to **load the upgrade**. It does not mean 0.14.0 outbound edits are restart-bound: once 0.14.0 is running, outbound channel saves Hot Apply through the shared canonical runtime truth.
 
 ## 2. What changes from v0.11 to v0.12
 
@@ -87,29 +93,29 @@ v0.12 intentionally does not implement a generic hot-reloader for every inbound 
 
 ## 3. Verify the actual installed version
 
-| Evidence | How | v0.12 expected |
+| Evidence | How | Expected |
 |---|---|---|
-| Native UI | DSH Sidebar / Plugins | `Notify & Control` entry exists |
-| CLI | `npm ls dsh-notifier` / `pnpm ls dsh-notifier` | `0.13.1` or newer |
-| Registry | `npm view dsh-notifier version` | matches the release you intended to install |
+| Native UI | DSH Sidebar / Plugins | `Notify & Control` entry exists for @leonhardthust/dsh-notifier |
+| CLI | `npm ls @leonhardthust/dsh-notifier` / `pnpm ls @leonhardthust/dsh-notifier` | `0.14.0` or newer |
+| Registry | `npm view @leonhardthust/dsh-notifier version` | matches the release you intended to install |
 
 Developers can also inspect the installed package:
 
 ```text
 exports["./client"] = "./client.js"
-dshQuality.testCount = 2011    # v0.13.1 release line; last published v0.13.0 snapshot was 1985
+dshQuality.testCount = 2011    # historical v0.13.1 line; the final 0.14.0 count follows release metadata
 ```
 
-## 4. Version says 0.12, behavior looks old
+## 4. Version is new, behavior looks old
 
 The usual cause is a stale `file:` install, manual node_modules overwrite, or pnpm restoring a different package tree.
 
 Check:
 
 ```bash
-pnpm why dsh-notifier
+pnpm why @leonhardthust/dsh-notifier
 # or
-npm ls dsh-notifier
+npm ls @leonhardthust/dsh-notifier
 ```
 
 A `file:` / absolute local path means you are not testing the registry artifact.
@@ -117,65 +123,63 @@ A `file:` / absolute local path means you are not testing the registry artifact.
 Clean reinstall:
 
 ```bash
-dsh plugin remove dsh-notifier --profile <profile-name>
-dsh plugin add dsh-notifier@latest --profile <profile-name>
+dsh plugin remove @leonhardthust/dsh-notifier --profile <profile-name>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
 ```
 
 Restart DSH afterwards.
 
-## 5. v0.12 triage
+## 5. 0.14.0 triage
 
 ### Native entry is missing
 
 Check:
 
-1. installed package is `0.13.1+`;
+1. installed package is `0.14.0+`;
 2. DSH restarted;
-3. Host version is in the declared range;
+3. Host is `0.2.2-rc.3`;
 4. installed package contains `client.js`;
 5. the web profile reports no client-module/slot failure.
 
-Declared requirement (`engines.dsh`; the rc.5 preflight reads it alone and ignores the
+Declared requirement (`engines.dsh`; the rc.3 preflight reads it alone and ignores the
 `@deepseek-ai/dsh*` peers):
 
 ```text
-0.2.1-rc.5
+0.2.2-rc.3
 ```
 
-The `0.1.7-*` line is no longer supported: the host preflight rejects the manifest version
-gate at install time (unless an exact-version exemption is granted by hand, which this
-plugin does not ship). After upgrading to this line you must re-configure / re-pair (see
-section 8).
+The `0.1.7-*` and `0.2.1-*` lines are no longer supported: the host preflight rejects the
+manifest version gate at install time (unless an exact-version exemption is granted by
+hand, which this plugin does not ship).
 
 ### Outbound save still requires restart
 
-That is not normal v0.12 behavior. Verify that you are testing the registry build, that the edit is outbound (not inbound), and that no stale local package is shadowing it.
+That is not normal 0.14.0 behavior. Verify that you are testing the registry build, that the edit is outbound (not inbound), and that no stale local package is shadowing it.
 
 ### Advanced Console will not open
 
 Native does not auto-enable `admin.enabled`. If you explicitly disabled Admin, re-enable it or use YAML/CLI for recovery.
 
-## 6. Roll back to v0.11
+## 6. Roll back
+
+This fork's published line starts at `0.14.0`. To return to the earlier feature line you
+must switch back to the original package `dsh-notifier@0.13.1`; remove the fork first.
 
 ```bash
-dsh plugin add dsh-notifier@0.11.0 --profile <profile-name>
+dsh plugin remove @leonhardthust/dsh-notifier --profile <profile-name>
+dsh plugin add dsh-notifier@0.13.1 --profile <profile-name>
 ```
 
-Back up state first.
+Back up state first. 0.13.x does not understand the 0.14.0 schema/namespace marker, so a
+channel configured only through the 0.14.0 Native UI may need reconfiguration after the
+downgrade. Reconfigure in the original package if needed, and re-pair.
 
-v0.11 does not understand the v0.12 canonical key:
+Do not edit a live state file by hand, and do not keep the original package and the fork
+installed together.
 
-```text
-channel:<type>:outbound
-```
+## 7. DSH 0.2.2-rc.3 migration and the new data namespace
 
-A channel configured only through v0.12 Native UI may therefore disappear after downgrade unless the same configuration still exists in YAML/legacy state. Reconfigure it in v0.11 if needed.
-
-Do not edit a live state file by hand.
-
-## 7. DSH 0.2.1-rc.5 migration and the new data namespace
-
-This plugin declares activation against DSH **0.2.1-rc.5** only (`engines.dsh`). The rc.5
+This plugin declares activation against DSH **0.2.2-rc.3** only (`engines.dsh`). The rc.3
 install preflight reads an own `engines.dsh` alone and ignores the `@deepseek-ai/dsh*`
 peers, so the package installs with **no version exemption**.
 
@@ -184,14 +188,19 @@ peers, so the package installs with **no version exemption**.
 The state store now carries an explicit schema/namespace version. At startup:
 
 - version == current: normal load;
-- **unknown/old version** (for example a `state.json` written by the old `0.1.7-*` line):
-  the identity bindings, pending bindings, pairing codes, session selection and cursors
-  inside are **not** treated as authority — they are not executed and not authorized; the
-  plugin asks you to **re-configure / re-pair**, and **never deletes the original file** (it
-  is preserved as-is for inspection, with an optional `.bak` copy).
+- **unknown/old version** (for example a `state.json` written by 0.13.x or the older
+  `0.1.7-*` line): the identity bindings, pending bindings, pairing codes, session
+  selection and cursors inside are **not** treated as authority — they are not executed
+  and not authorized; the plugin asks you to **re-configure / re-pair**, and **never
+  deletes the original file**.
+- On the first application write the store creates
+  `state.json.pre-v0.14-legacy.<timestamp>` as a forensic copy, then establishes the new
+  namespace.
 
 So after upgrading you must re-configure channels and re-`/pair`. Old pending actions, old
-pairing codes and old account-owned members are not inherited.
+pairing codes and old account-owned members are not inherited. The backup and forensic
+copy live in the same state directory: `$DSH_HOME/dsh-notifier/` (or
+`~/.dsh/dsh-notifier/` when `$DSH_HOME` is unset).
 
 ### 7.2 Account identity key
 
@@ -204,7 +213,7 @@ conservatively re-establishes a local account identity and requires re-pairing.
 
 `file:` is for temporary development only.
 
-Before publishing or reporting a real-host result, install the registry build, then verify:
+Before publishing or reporting a real-host result, install the registry fork build, then verify:
 
 - registry version;
 - package payload;

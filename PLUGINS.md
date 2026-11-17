@@ -1,8 +1,8 @@
-# PLUGINS.md — 从你的插件调用 dsh-notifier
+# PLUGINS.md — 从你的插件调用 @leonhardthust/dsh-notifier
 
 > English: [PLUGINS.en.md](PLUGINS.en.md)
-> dsh-notifier v0.6 起开放两条面:**出向** `ctx.notifier` 服务注入(推送)与**入向** `dsh-notifier/sent` 事件(订阅)。
-> 本文档面向**消费方插件作者**。公共面版本:`0.7`(`ctx.notifier.version`,只在公共面 breaking 时 bump,与包版本不联动)。
+> `@leonhardthust/dsh-notifier`（维护 fork）从 v0.6 公共面起开放两条面：**出向** `ctx.notifier` 服务注入（推送）与**入向** `dsh-notifier/sent` 事件（订阅）。事件名是契约的一部分，不随包名 scoped 化改变。
+> 本文档面向**消费方插件作者**。公共面版本：`0.7`（`ctx.notifier.version`，只在公共面 breaking 时 bump，与包版本不联动）。
 
 ## 30 秒上手
 
@@ -17,21 +17,21 @@ export function apply(ctx) {
 }
 ```
 
-## 服务获取：静态声明是唯一形态（真机验证定稿）
+## 服务获取：推荐静态声明，可选依赖可用 ctx.inject
 
-> 2026-08-16 真机验证（DSH 0.1.0-rc.6 / Node 24）裁定：宿主 cordis **只认静态 `inject` 声明**。以下两种曾被当作备选的写法在 rc.6 实测不可用。
+DSH `0.2.2-rc.3`（Cordis 4.1.0）的实测结论：
 
-| 写法 | 真机结论 | 说明 |
+| 写法 | rc.3 结论 | 说明 |
 |---|---|---|
-| ✅ 静态声明 `export const inject = ['notifier']` | **成立（唯一可用）** | apply 执行时服务已就绪；探针实测解析到 `version=0.6` 真服务 |
-| ❌ 回调式 `ctx.inject(['notifier'], cb)` | **回调不触发** | API 存在但回调从未执行，等待分支挂死——不要用 |
-| ❌ 探测式 `typeof ctx.notifier?.push === 'function'` | **直接抛错** | 未声明 inject 时访问服务属性被宿主拦截：`cannot get property "notifier" without inject` |
+| ✅ 静态声明 `export const inject = ['notifier']` | **推荐** | apply 执行时服务已就绪（宿主保证等待）；探针实测解析到真服务 |
+| ✅ 回调式 `ctx.inject(['notifier'], cb)` | **可用（可选依赖）** | 本插件自己的 Native 通道就用它等待 `connection`/`webServer`；回调在服务就绪后执行，宿主没有该服务时保持降级 |
+| ❌ 未声明 inject 直接 `ctx.notifier` | **抛错** | 未声明 inject 时访问服务属性被宿主拦截：`cannot get property "notifier" without inject` |
 
-**静态声明为什么安全**：dsh-notifier v0.6 承诺任何形态下（含 `enabled: false`、零渠道、顶层禁用）都 `ctx.provide` 服务（禁用时为 no-op stub）——只要**装了** dsh-notifier，静态声明永远不会卡启动。反之**没装**它而静态声明，宿主会因等待服务而 pending（阻塞启动）——把 dsh-notifier 列为你插件的安装前置，并在文档写明。
+**推荐静态声明的理由**：`@leonhardthust/dsh-notifier` 承诺任何形态下（含 `enabled: false`、零渠道、顶层禁用）都 `ctx.provide` 服务（禁用时为 no-op stub）——只要**装了**它，静态声明不会卡启动。反之**没装**它而静态声明，宿主会因等待服务而 pending（阻塞启动）——把本包列为你插件的安装前置，并在文档写明。若你确实把它当可选依赖，用 `ctx.inject(['notifier'], cb)` 而不是未声明直读。
 
-**同理**：要注册工具就得声明 `inject: ['tools']`（rc.6 对 `ctx.tools` 同样要求静态声明，未声明访问即抛错）；`ctx.on`（事件订阅）不需要声明。
+**同理**：要注册工具就得声明 `inject: ['tools']`（未声明访问 `ctx.tools` 即抛错）；`ctx.on`（事件订阅）不需要声明。
 
-从包根直接导入时只保证 DSH 插件契约 `{ name, inject, apply }`。内部构造器（例如 store、token vault、公共 facade）不属于消费者 API，仅通过明确的 `dsh-notifier/internal` 子路径供本地测试和构建工具使用。
+从包根直接导入时只保证 DSH 插件契约 `{ name, inject, apply }`。内部构造器（例如 store、token vault、公共 facade）不属于消费者 API，仅通过明确的 `@leonhardthust/dsh-notifier/internal` 子路径供本地测试和构建工具使用。
 
 ## push API
 
@@ -137,12 +137,12 @@ export function apply(ctx) {
 }
 ```
 
-## 单测：`dsh-notifier/testing`
+## 单测：`@leonhardthust/dsh-notifier/testing`
 
 消费方插件的单测不必手写 stub：
 
 ```js
-import { createFakeNotifier } from 'dsh-notifier/testing'
+import { createFakeNotifier } from '@leonhardthust/dsh-notifier/testing'
 
 const fake = createFakeNotifier({ sourceName: 'my-plugin', now: () => 0 })
 // 把 fake 当作 ctx.notifier 注入你的 apply()
@@ -157,26 +157,27 @@ await fake.flush()  // resolve undefined
 
 两处刻意差异（不是缺陷）：fake 不做长度钳制/限流/预算记账（真实资源语义由真 facade 的契约测试覆盖），也不提供 `enabled()`（宿主诊断面，按能力探测 `typeof notifier?.push === 'function'` 即可）。fake **不发** `sent` 事件——事件面不在本工具内，测事件侧请用自有 `ctx` stub。
 
-## TypeScript：`dsh-notifier/types`
+## TypeScript：`@leonhardthust/dsh-notifier/types`
 
 用 TS 写消费方插件时，类型从 type-only 子路径取：
 
 ```ts
-import type { NotifierFacade, NotifyMessage, PushResult } from 'dsh-notifier/types'
+import type { NotifierFacade, NotifyMessage, PushResult } from '@leonhardthust/dsh-notifier/types'
 ```
 
 导出 `NotifyLevel` / `NotifyMessage` / `NotifyOptions` / `PushResult` / `PushFailure` / `NotifierSource` / `NotifierFacade` / `SentEventRecord` / `FakeNotifier` 等，逐项对照运行时公共面（只声明真存在的字段，内部选项不外泄）。`NotifierFacade.version` 是字面量 `'0.7'`，与 `ctx.notifier.version` 同源。`SentEventRecord` 保持 metadata-only——**不含** `title`/`content`/原始错误正文。
 
-这是显式 type-only 子路径：包根（`dsh-notifier`）是 DSH 插件契约本身，**没有** root `"types"` 字段（root JS 导出面远大于 notifier 公共面）。请始终 `from 'dsh-notifier/types'`。
+这是显式 type-only 子路径：包根（`@leonhardthust/dsh-notifier`）是 DSH 插件契约本身，**没有** root `"types"` 字段（root JS 导出面远大于 notifier 公共面）。请始终 `from '@leonhardthust/dsh-notifier/types'`。
 
 ## 真机验证记录
 
-- **2026-08-16 · DSH 0.1.0-rc.6(profile web,Node 24)**:特性 A/B 双确认——静态 inject 消费方解析到 `version=0.6` 真服务(非 stub);`dsh-notifier/sent` 事件跨插件可见(15/15,payload 形状完整);零渠道语义符合设计(`ok:false` 三空数组,不崩不阻塞)。同时裁定:回调式 `ctx.inject` 不触发、未声明访问服务属性直接抛错——本文档全部配方据此定稿为静态声明。安装注意:宿主用 pnpm 管理依赖时,手动覆盖 `node_modules/dsh-notifier` 会被回滚,升级请用 `dsh plugin add file:<路径>`。
+- **2026-11-17 · DSH 0.2.2-rc.3（Desktop web + headless，disposable DSH_HOME）**：本插件在 web profile 装配 `ctx.inject(['connection','webServer'], …)` 并挂上 `/dsh-notifier` 路由（未认证请求返回 401），在 headless profile 无 connection/webServer 仍正常激活并交付本地 webhook 通知（19/19 host smoke）。这是“静态 inject 仍是推荐形态、回调式 `ctx.inject` 在 rc.3 可用”的当前证据；旧 rc.6 的“回调不触发”结论只适用于当时版本，不再作为当前契约。
+- **2026-08-16 · DSH 0.1.0-rc.6（历史）**：静态 inject 消费方解析到真服务，`dsh-notifier/sent` 跨插件可见，零渠道语义符合设计；当时的回调式 `ctx.inject` 不触发。安装注意：宿主用 pnpm 管理依赖时，手动覆盖 `node_modules` 会被回滚，升级请用 DSH CLI 的插件安装命令。
 
 ## FAQ
 
-**Q: 为什么不直接 `import dsh-notifier`?**
-import 拿到的是构造器,你得自己解析配置、自建实例——配置两份、账本两份、限流各管各的。服务注入共享 dsh-notifier 的全部基础设施(渠道配置、路由、账本、限流、flush)。
+**Q: 为什么不直接 `import @leonhardthust/dsh-notifier`?**
+import 拿到的是构造器,你得自己解析配置、自建实例——配置两份、账本两份、限流各管各的。服务注入共享本包的全部基础设施(渠道配置、路由、账本、限流、flush)。
 
 **Q: 我的插件能收到自己 push 的 sent 事件吗?**
 能(广播无过滤)。所以监听器里 push = 无限循环,军规禁止。
@@ -185,4 +186,4 @@ import 拿到的是构造器,你得自己解析配置、自建实例——配置
 会进通知账本供用户审计;建议用你的插件名。恶意伪造他人 sourceName 属进程内信任域问题(与 inject 同级),不做签名。
 
 **Q: 能否直接 import 包根拿构造器?**
-包根只导出 DSH 插件入口（`name`、`inject`、`apply`）。测试或构建工具若确需内部构造器，使用显式 `dsh-notifier/internal` 路径；这不是操作系统级隔离，同进程恶意插件仍属于宿主信任边界。
+包根只导出 DSH 插件入口（`name`、`inject`、`apply`）。测试或构建工具若确需内部构造器，使用显式 `@leonhardthust/dsh-notifier/internal` 路径；这不是操作系统级隔离，同进程恶意插件仍属于宿主信任边界。

@@ -23,6 +23,9 @@ export async function send(resolved, msg) { ... }
 
 约定：
 
+- `resolved` 是**纯 JSON 可序列化的配置快照**：`OutboundSource` 会 JSON 克隆后深冻结它，`send()` 只能读取，绝不能回写运行态（`resolved._x = ...` / `??=` 在严格模式下会 `TypeError`，整渠道静默失效，见上游 issues #45/#46）。
+- 发送期运行态（token 管理器、限速门、`msg_seq`、探针布尔、告警 latch 等）放在**适配器模块私有 `WeakMap`**，以 `resolved` 对象身份为键：同一份活配置跨多次 `send` 复用状态；热替换产生新对象即新状态，旧状态随旧快照被 GC。`resolve()` 永远不返回 `_` 前缀运行态键。
+- 派生但非秘密的配置（例如 serverchan 的 `aliasConflict` 名称表）可以留在快照里；只把“是否已告警”的 latch 放进 WeakMap。日志/错误绝不能回显凭证；`resolved` 不得被序列化进诊断面。
 - `resolved.timeoutMs` 钳制在 1000–60000ms（`num(cfg.timeoutMs, 默认, 1000, 60000)`）。
 - 错误 message 中文、含排障指引、**永不回显完整凭证**（secret 字段只出现末 4 位或完全不出现）。
 - 每渠道的 secret 字段登记进 `SECRET_FIELDS`（spec 渠道用 `secret: true` 自动登记）。
@@ -60,7 +63,9 @@ slack: {
 ## 3. 代码适配器（token 型/多步控制流）
 
 需要「换 token → 缓存 → 过期刷新」的渠道共用 `_tokens.mjs` 的 `createTokenManager()`
-（qq-bot 与 wecom-app 是现成范例）。其余直接实现第 1 节契约即可（现有 8 渠道即此形态）。
+（qq-bot 与 wecom-app 是现成范例）。管理器实例、限速门、序号计数和一次性探针都必须放进
+适配器私有 `WeakMap`（见第 1 节），不要挂回 `resolved`。其余直接实现第 1 节契约即可（现有
+8 渠道即此形态）。
 
 ## 4. 契约测试（每渠道交付的一部分）
 

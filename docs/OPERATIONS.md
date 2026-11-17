@@ -2,20 +2,20 @@
 
 ## Current release baseline
 
-Current release: **dsh-notifier v0.13.1**.
+Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.0** (release preparation at this snapshot; until the npm publish is recorded, do not describe it as published).
 
-The reviewed release head is the v0.13.1 release commit after the dev → main promotion. The existing v0.13.0 tag and GitHub Release remain immutable. Real-device/provider evidence remains explicitly open.
+The previous upstream release was `dsh-notifier@0.13.1`; its tag and GitHub Release remain immutable history. Real-device/provider evidence remains explicitly open for every line.
 
-Release evidence (2026-09-26):
+Release evidence for the historical upstream v0.13.1 line (2026-09-26):
 
 - `npm test`: **2011 / 2011 pass**, 0 fail, 0 skip
 - `node scripts/verify-release.mjs`: release guard green
 - `node scripts/gen-channel-matrix.mjs --check`: **28 channels**
 - `npm pack --dry-run --json`: **314 files**, `client.js` included, six viewport-sized README screenshots included, no agent-config leak
 - npm publish: `dsh-notifier@0.13.1` accepted by npm from the reviewed release head
-- v0.13.1 adds no fresh real DSH/provider run; the inherited host compatibility evidence and remaining gaps stay in `docs/memory/risks.md`
+- no fresh real DSH/provider run was added by that line; inherited evidence and remaining gaps stay in `docs/memory/risks.md`
 
-The `v0.13.1` tag is pinned to reviewed release commit `9e0d3b6`; `main` and `dev` contain only later documentation/topology follow-ups. Never retag or force-push an existing release.
+The v0.13.1 tag stays pinned to its reviewed release commit; never retag or force-push an existing release. The fork's branch/automation model is documented in [FORK_RELEASE.md](FORK_RELEASE.md).
 
 ## Local checks
 
@@ -33,7 +33,7 @@ The project has no runtime install step for tests. Optional packages are only ne
 
 ## Control-plane model
 
-v0.12 has three distinct operator surfaces:
+The current line has three distinct operator surfaces:
 
 1. **DSH Native Notify & Control** — primary daily surface.
 2. **Advanced Console** — loopback-only (`127.0.0.1`) deep management/recovery.
@@ -50,13 +50,14 @@ Use `$DSH_HOME/dsh-notifier` when `DSH_HOME` is set; otherwise the plugin falls 
 Keep private:
 
 - `state.json`
+- `state.json.pre-v0.14-legacy.<timestamp>` forensic copies produced by the 0.14.0 namespace gate
 - ledger/audit files
 - lock/corrupt backups
 - `bootstrap-paircode.txt` while present
 
 The bootstrap pairing file is mode `0600`; logs print only its path.
 
-### v0.12 outbound state
+### Outbound state
 
 Canonical editable outbound state:
 
@@ -75,9 +76,9 @@ Do not manually edit a live state file while DSH is running.
 
 ## First-time setup
 
-1. Install the registry package:
+1. Install the registry package (the original `dsh-notifier` package and this fork must not coexist):
    ```bash
-   dsh plugin add dsh-notifier@latest --profile <profile-name>
+   dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
    ```
 2. Restart DSH once.
 3. Open **Notify & Control** from Sidebar or Plugins.
@@ -86,7 +87,7 @@ Do not manually edit a live state file while DSH is running.
 6. If remote control is needed, configure an inbound channel and pair the intended identity.
 7. Exercise one notification, one approval fallback, and one `ask_user` timeout/settlement before unattended use.
 
-Outbound config changes are Hot Apply in v0.12. Inbound transports may still be restart-bound; honor the UI `applyMode`.
+Outbound config changes are Hot Apply in the current line. Inbound transports may still be restart-bound; honor the UI `applyMode`.
 
 ## Advanced Console recovery
 
@@ -106,10 +107,11 @@ Recovery address: use the actual `Web 管理台已就绪` startup line; never gu
 
 | Symptom | First checks |
 |---|---|
-| No Native Sidebar entry | package is `0.13.1+`, DSH restarted, Host version in declared range, client module served |
+| No Native Sidebar entry | package is `0.14.0+`, DSH restarted, Host `0.2.2-rc.3`, client module served |
 | Native panel fails to load | DSH slot/client errors, `client.js` package payload, Connection/webServer control route |
 | No outbound delivery | Channels health, real test result, `channel-selfcheck.mjs`, adapter validation |
-| Saved outbound still uses old credentials | Confirm actual registry version; v0.13.1 must read the live `OutboundSource` |
+| Saved outbound still uses old credentials | Confirm actual registry version; current line must read the live `OutboundSource` |
+| Old state reported as untrusted after upgrade | 0.14.0 namespace gate; check `state.json.pre-v0.14-legacy.*`, re-pair/reconfigure, never hand-edit state |
 | Inbound silent | optional SDK/transport, account/source identity, pairing, provider WS/long-poll logs, restart-pending state |
 | Approval did not apply | original source/chat, token age, first-arrival state; timeout is never approval |
 | `ask_user` missing | installed version, questions assembly, task/session binding |
@@ -121,13 +123,13 @@ Provider-specific media, callback ACK and long-connection behavior remains evide
 
 ## DSH host compatibility
 
-Declared peer range:
+Declared host requirement (`engines.dsh`, exact):
 
 ```text
-0.2.1-rc.5
+0.2.2-rc.3
 ```
 
-Release evidence levels are documented in [compatibility-matrix.md](compatibility-matrix.md). `verify-host-compat.mjs` is part of the release guard.
+The optional `@deepseek-ai/dsh-session` peer marker and `dshWorkshop.compatibility.dshVersions` name the same version. Release evidence levels are documented in [compatibility-matrix.md](compatibility-matrix.md). `verify-host-compat.mjs` is part of the release guard.
 
 ## Release smoke test
 
@@ -142,7 +144,8 @@ Before publishing:
 7. open Native surface;
 8. save/test one outbound channel;
 9. verify the next real notifier operation sees the saved channel without restart;
-10. exercise one inbound command / question path when available.
+10. exercise one inbound command / question path when available;
+11. optionally run `node test/host/harness.smoke.mjs` against the installed 0.2.2-rc.3 host for the disposable web/headless seam smoke.
 
 Record unverified real-provider gaps instead of hand-waving them away.
 
@@ -150,10 +153,14 @@ Record unverified real-provider gaps instead of hand-waving them away.
 
 Repository model:
 
-- `dev` — development
-- `main` — release/public docs
+- Canonical upstream: `THEWOLFWALKER/dsh-notifier` (attribution and history; no unreviewed pushes).
+- Maintained fork: `LeonhardtHUST/dsh-notifier`, published as `@leonhardthust/dsh-notifier`.
+- `dev` — development (fork topic branches merge here first).
+- `main` — release/public docs (fork release line).
 
-Typical flow:
+See [FORK_RELEASE.md](FORK_RELEASE.md) for the fork's reviewed-sync and OIDC publish automation.
+
+Typical release flow:
 
 ```text
 git switch dev

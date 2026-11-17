@@ -19,7 +19,7 @@ AI 只读定位
 
 把下面整段发给能看当前终端/日志的 AI：
 
-> 请帮我排查 dsh-notifier。第一轮只做只读诊断，不卸载、不重装、不删除 state、不修改密钥。确认实际 dsh-notifier 版本和安装来源、DSH 版本/profile、Node 版本、`client.js` 是否装载、问题属于 Native UI / 出站 / 入站 / 身份配对 / provider / 存储 / 网络中的哪一层，并做最小复现。日志和配置必须脱敏，绝不能输出 Token/Secret/Authorization。先给我证据和结论；如果是明确、低风险、本地可修复的问题，再给修复步骤。若仍解决不了，请按项目 `docs/DIAGNOSTICS.md` 生成可直接上报的 Support Report。项目：`https://github.com/THEWOLFWALKER/dsh-notifier`
+> 请帮我排查 `@leonhardthust/dsh-notifier`。第一轮只做只读诊断，不卸载、不重装、不删除 state、不修改密钥。确认实际包版本和安装来源、是否与原包 `dsh-notifier` 共存、DSH 版本（本包只声明 0.2.2-rc.3）与 profile、Node 版本、`client.js` 是否装载、问题属于 Native UI / 出站 / 入站 / 身份配对 / provider / 存储 / 网络中的哪一层，并做最小复现。日志和配置必须脱敏，绝不能输出 Token/Secret/Authorization。先给我证据和结论；如果是明确、低风险、本地可修复的问题，再给修复步骤。若仍解决不了，请按项目 `docs/DIAGNOSTICS.md` 生成可直接上报的 Support Report。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
 
 ## AI 第一轮必须查什么
 
@@ -29,10 +29,11 @@ AI 只读定位
 
 ```text
 Node
-DSH / Harness
-dsh-notifier
+DSH / Harness（本包只声明 0.2.2-rc.3）
+@leonhardthust/dsh-notifier
 profile
 安装来源
+是否同时装着原包 dsh-notifier
 ```
 
 不要只看 `package.json` 仓库版本，要看**当前机器实际装载的包**。
@@ -120,15 +121,16 @@ provider accepted
 检查：
 
 ```bash
-npm ls dsh-notifier
-pnpm why dsh-notifier
+npm ls @leonhardthust/dsh-notifier
+pnpm why @leonhardthust/dsh-notifier
 ```
 
-如果看到 `file:` 或本地路径，说明实际运行的可能不是 registry 包。
+如果看到 `file:` 或本地路径，说明实际运行的可能不是 registry 包。如果同时看到原包
+`dsh-notifier`，先按 [upgrade-guide.md](upgrade-guide.md) 移除它：两个包不能共存。
 
 ### 出站保存后仍走旧配置
 
-v0.13 出站应 Hot Apply。
+v0.14 出站应 Hot Apply。
 
 重点查：
 
@@ -137,6 +139,17 @@ v0.13 出站应 Hot Apply。
 - 是否旧 `file:` 包；
 - 保存是否真的 durable success；
 - 页面与 runtime 是否读同一 canonical config。
+
+### 升级到 0.14.0 后提示旧状态不受信 / 要求重新配对
+
+这是 0.14.0 的 state schema/namespace 门：旧 namespace 的绑定、待决审批、配对码和凭证不会被当作权威。
+
+1. 旧 namespace 的绑定、待决审批、配对码和凭证不会被当作权威；
+2. 应用首次写入会生成 `state.json.pre-v0.14-legacy.<时间戳>` 取证副本，原文件保留；
+3. 按页面提示重新 `/pair`、重新保存或扫码重建渠道配置；
+4. 不要手改 `state.json`，也不要伪造 `__schema`。
+
+需要回退时先备份 state，再按 [upgrade-guide.md](upgrade-guide.md) 的降级步骤操作。
 
 ### 入站保存后没有上线
 

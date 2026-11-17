@@ -19,9 +19,9 @@
 ```text
 OS:
 Node:
-DSH/Harness:
+DSH/Harness: （本包只声明 0.2.2-rc.3）
 DSH profile:
-dsh-notifier:
+@leonhardthust/dsh-notifier:
 安装来源:
 ```
 
@@ -35,7 +35,8 @@ Git
 未知
 ```
 
-不要只写“最新版”。
+不要只写“最新版”。如果机器上还装着原包 `dsh-notifier`，记录两者共存情况并先按
+[upgrade-guide.md](upgrade-guide.md) 移除原包。
 
 ## 2. 问题范围
 
@@ -86,9 +87,9 @@ client actually displayed?
 
 ```bash
 node -v
-npm ls dsh-notifier
-pnpm why dsh-notifier
-npm view dsh-notifier version
+npm ls @leonhardthust/dsh-notifier
+pnpm why @leonhardthust/dsh-notifier
+npm view @leonhardthust/dsh-notifier version
 ```
 
 DSH CLI / profile 命令按当前环境可用能力执行。
@@ -102,7 +103,7 @@ DSH CLI / profile 命令按当前环境可用能力执行。
 记录：
 
 ```text
-Plugins 是否能看到 dsh-notifier
+Plugins 是否能看到 @leonhardthust/dsh-notifier
 Sidebar 是否有 Notify & Control
 client.js 是否存在于实际安装包
 浏览器/Host Client 是否有 slot/module error
@@ -168,6 +169,9 @@ state file exists?
 readable?
 writable?
 bootStatus?
+schemaVersion / namespace 是否符合当前版本?
+legacyUnknown（旧 namespace 隔离）是否命中?
+是否有 state.json.pre-v0.14-legacy.<时间戳> 取证副本?
 disk full?
 permission?
 STATE_BUSY / STATE_CORRUPT / STATE_READ_FAILED / STATE_WRITE_FAILED?
@@ -224,8 +228,9 @@ redirect?
 - Node:
 - DSH/Harness:
 - Profile:
-- dsh-notifier:
+- @leonhardthust/dsh-notifier:
 - Install source:
+- Original dsh-notifier co-installed: yes/no
 
 ## Scope
 - Channel:
@@ -255,10 +260,12 @@ redirect?
 ## Checks already completed
 - [ ] actual package version verified
 - [ ] install source checked
+- [ ] original dsh-notifier package confirmed absent
 - [ ] correct profile confirmed
 - [ ] DSH restarted after package upgrade
 - [ ] file: / stale install checked
 - [ ] relevant restartPending checked
+- [ ] legacy state isolation / pre-v0.14 backup checked when upgrading
 - [ ] secrets redacted
 
 ## Local fixes attempted

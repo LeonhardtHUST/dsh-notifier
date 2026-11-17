@@ -23,21 +23,24 @@ dsh-notifier 可以只当通知插件，也可以继续开启手机控制。
 
 把这句话发给能操作当前机器终端的 AI / Agent：
 
-> 请帮我在这台机器上安装或升级 dsh-notifier 最新稳定版。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH / Node 版本兼容，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。使用官方发布包完成安装，重启对应 DSH Host 一次，确认实际安装版本和「通知与控制」入口，最后把你执行过的命令、结果和仍存在的异常汇报给我。项目：`https://github.com/THEWOLFWALKER/dsh-notifier`
+> 请帮我在这台机器上安装或升级 `@leonhardthust/dsh-notifier` 最新稳定版。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH 是 `0.2.2-rc.3`、Node 满足要求，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。如果装着原包 `dsh-notifier`，先确认并移除它。安装后重启对应 DSH Host 一次，确认实际安装版本和「通知与控制」入口；从 0.13.x 升级到 0.14.0 时先备份旧 state 并准备重新配对。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
 
 完整 Agent 提示词：[AI_INSTALL.md](AI_INSTALL.md)。
 
 ### 手动安装
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile名>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 ```
 
 如果你的 CLI 不接受 `@latest`：
 
 ```bash
-dsh plugin add dsh-notifier --profile <profile名>
+dsh plugin add @leonhardthust/dsh-notifier --profile <profile名>
 ```
+
+本包只对 DSH `0.2.2-rc.3` 声明精确兼容（`engines.dsh`）；其他版本会被安装预检拦下。
+原包 `dsh-notifier` 与本 fork 不要同时安装：两者争用同一插件 id 与状态目录。迁移时先移除原包。
 
 安装后**重启 DSH 一次**，让 Host 插件和 `client.js` 装载。
 
@@ -46,7 +49,7 @@ dsh plugin add dsh-notifier --profile <profile名>
 优先看三件事：
 
 1. DSH 侧栏出现 **「通知与控制」**；
-2. Plugins 页面能看到 `dsh-notifier`；
+2. Plugins 页面能看到 `@leonhardthust/dsh-notifier`；
 3. 实际安装版本是你预期的发布版本。
 
 如果版本对，但界面像旧版，先看 [升级指南](upgrade-guide.md)，尤其检查旧 `file:` 安装和残留包。
@@ -86,7 +89,7 @@ DSH Sidebar
 
 ## 第三步：理解 Hot Apply
 
-装好 v0.13 后，**出站配置保存后会热生效**：
+装好 v0.14 后，**出站配置保存后会热生效**：
 
 ```text
 保存
@@ -301,10 +304,27 @@ node scripts/route.mjs show
 推荐：
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile名>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 ```
 
 升级包以后重启一次 DSH，让新代码加载。
+
+### 从 0.13.x 升级到 0.14.0
+
+0.14.0 使用新的 state schema/namespace。升级前先备份：
+
+```text
+$DSH_HOME/dsh-notifier/state.json（或整个 state 目录）
+```
+
+升级后如果插件提示旧状态不受信，说明旧 namespace 的绑定、待决审批、配对码和凭证不会被当作权威。
+应用首次写入会生成 `state.json.pre-v0.14-legacy.<时间戳>` 取证副本并保留原文件。此时按页面提示：
+
+1. 重新生成配对码并在手机 `/pair`；
+2. 重新保存出站/入站渠道配置或重新扫码；
+3. 旧的待决审批不会继续生效，让 Agent 重新发起即可。
+
+不要手改 `state.json` 或伪造 `__schema` 标记。
 
 这次“升级后的重启”不代表以后每次修改出站配置都要重启。
 
@@ -332,7 +352,7 @@ dsh plugin add dsh-notifier@latest --profile <profile名>
 | --- | --- |
 | 侧栏没有「通知与控制」 | 实际版本、是否重启、DSH Host 兼容范围、client module |
 | Plugins 有插件但页面空 | `client.js` 是否装进包、slot/client 错误 |
-| 出站保存后还走旧配置 | 是否实际运行旧包 / `file:` 包；v0.13 出站应 Hot Apply |
+| 出站保存后还走旧配置 | 是否实际运行旧包 / `file:` 包；v0.14 出站应 Hot Apply |
 | 入站保存后不在线 | 是否显示 Restart pending |
 | 测试 API 成功但手机没消息 | provider/client 语义；accepted 不等于 confirmed |
 | Telegram 409 | webhook / poller 冲突 |

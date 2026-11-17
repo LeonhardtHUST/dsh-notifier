@@ -1,7 +1,8 @@
 // dsh-notifier 消费方最小示例（examples/，不随 npm 包发布）。
 //
-// 静态 `inject` 声明是获取 `ctx.notifier` 的唯一可用形态：`apply` 执行时服务已就绪
-// （宿主保证等待），不要用 `ctx.inject(...)` 回调式或未声明直接访问（两者在真机均不可用）。
+// 静态 `inject` 声明是获取 `ctx.notifier` 的推荐形态：`apply` 执行时服务已就绪
+// （宿主保证等待）；若作为可选依赖，rc.3 的 `ctx.inject(...)` 回调也可用，
+// 但不要未声明 inject 直接读服务属性（宿主会抛错）。
 export const inject = ['notifier']
 
 export function apply(ctx) {
