@@ -273,7 +273,8 @@ test('qq-bot: 两段式成功投递（token 换取 + v2 消息）', async () => 
   assert.equal(seen.length, 2)
   assert.match(seen[0], /getAppAccessToken/)
   assert.match(seen[1], /\/v2\/groups\/G1\/messages/)
-  assert.equal(resolved._msgSeq, 1)
+  // 运行态 seq 不再回写冻结配置：用请求体里的 msg_seq 观察计数器推进
+  assert.equal(cap.bodies[1].msg_seq, 1)
 })
 
 test('qq-bot #33: 默认 markdown（msg_type=2 + markdown.content），精确锁 payload', async () => {
@@ -311,15 +312,32 @@ test('qq-bot #33: 超 3000 码点按码点分段（每段 ≤3000、msg_seq 递�
     assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(body.markdown.content), '不得产生孤立代理项')
   }
   assert.equal(sent.map((b) => b.markdown.content).join(''), long, '分段拼接恒等于原文')
-  assert.equal(resolved._msgSeq, 2)
 })
 
 test('qq-bot #33: 长 markdown 中途失败不推进 msg_seq（整条重试幂等基线）', async () => {
-  const cap = captureQq({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad') } })
-  const resolved = qqBot.resolve({ appId: 'A1', appSecret: 'S1', groupId: 'G1' })
-  await assert.rejects(() => qqBot.send(resolved, { title: '', content: '🙂'.repeat(3200), level: 'active' }), /非 JSON/)
-  await cap.done()
-  assert.equal(resolved._msgSeq, 0, '首段即失败：计数器不动')
+  const originalFetch = globalThis.fetch
+  const bodies = []
+  let messageCalls = 0
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).includes('getAppAccessToken')) {
+      return { ok: true, status: 200, json: async () => ({ access_token: 'T1', expires_in: 7200 }) }
+    }
+    bodies.push(JSON.parse(String(init.body ?? 'null')))
+    messageCalls += 1
+    // 首段即失败（2xx 但非 JSON）→ 计数器必须冻结
+    if (messageCalls === 1) return { ok: true, status: 200, json: async () => { throw new SyntaxError('bad') } }
+    return { ok: true, status: 200, json: async () => ({ id: 'msg1' }) }
+  }
+  try {
+    const resolved = qqBot.resolve({ appId: 'A1', appSecret: 'S1', groupId: 'G1', rateMs: 0 })
+    await assert.rejects(() => qqBot.send(resolved, { title: '', content: '🙂'.repeat(3200), level: 'active' }), /非 JSON/)
+    // 同一 resolved 对象的整条重试：首段沿用 seq=1（服务端按 seq+内容幂等去重）
+    await qqBot.send(resolved, MSG)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  assert.equal(bodies[0].msg_seq, 1, '失败尝试发出的首段 seq=1')
+  assert.equal(bodies[1].msg_seq, 1, '重试沿用同一 seq，不因失败自增')
 })
 
 test('qq-bot: 2xx 非 JSON（网关错误页）抛 BAD_UPSTREAM_RESPONSE，不再乐观当成功（G-56）', async () => {
@@ -335,11 +353,15 @@ test('qq-bot: 2xx 非 JSON（网关错误页）抛 BAD_UPSTREAM_RESPONSE，不�
 })
 
 test('qq-bot: 失败不推进 msg_seq（重试幂等基线锚定）', async () => {
-  const cap = captureQq({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad') } })
-  const resolved = qqBot.resolve({ appId: 'A1', appSecret: 'S1', targetType: 'user', userId: 'U1' })
+  const failCap = captureQq({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad') } })
+  const resolved = qqBot.resolve({ appId: 'A1', appSecret: 'S1', targetType: 'user', userId: 'U1', rateMs: 0 })
   await assert.rejects(() => qqBot.send(resolved, MSG), /非 JSON/)
-  await cap.done()
-  assert.equal(resolved._msgSeq, 0)
+  await failCap.done()
+  // 同一 resolved 的第二次发送（token 已缓存 → 只发消息）：seq 仍从 1 起
+  const okCap = captureQq({ ok: true, status: 200, json: async () => ({ id: 'm1' }) })
+  await qqBot.send(resolved, MSG)
+  await okCap.done()
+  assert.equal(okCap.bodies[0].msg_seq, 1, '失败未推进计数器：重试仍用 seq=1')
 })
 
 test('qq-bot: expires_in=0 不再 || 7200 静默活两小时——TTL 归一 fail-closed 抛错（G-55）', async () => {

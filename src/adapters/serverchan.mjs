@@ -40,7 +40,9 @@ export function resolve(cfg = {}) {
   // 不在发送时才炸。这里只做校验、不缓存派生端点——endpoint 仍由 send 侧的
   // endpointOf 单点派生，保持单一真相。
   endpointOf(sct)
-  // 别名冲突检测：多个别名同时配置且至少一个非空 → send() 首次调用 stderr 出声
+  // 别名冲突检测：多个别名同时配置且至少一个非空 → send() 首次调用 stderr 出声一次。
+  // aliasConflict 是 resolve 时机派生的只读快照（只有别名名、不含口令），不是运行态：
+  // 它随 JSON 克隆进入不可变配置，是否已出声的闩锁放在模块私有 WeakMap 里。
   const present = []
   if (str(cfg.sct) !== '') present.push('sct')
   if (str(cfg.sendKey) !== '') present.push('sendKey')
@@ -48,18 +50,33 @@ export function resolve(cfg = {}) {
   return {
     sct,
     timeoutMs: num(cfg.timeoutMs, 10000, 1000, 60000),
-    // 运行态（不序列化）：待出声的别名冲突信息
-    _aliasConflict: present.length > 1 ? present : null,
+    aliasConflict: present.length > 1 ? present : null,
   }
+}
+
+// 运行态与配置分离（上游 issues #45/#46）：出站配置由 OutboundSource JSON 克隆后
+// 深冻结，send 期间把「已出声」写回 resolved 会 TypeError。出声闩锁按 resolved 对象
+// 身份存进 WeakMap；JSON 克隆保留 aliasConflict 本身，所以克隆后的活配置依然能恰好
+// 在首次发送时提醒一次。
+const runtimeStates = new WeakMap()
+
+function stateOf(resolved) {
+  let state = runtimeStates.get(resolved)
+  if (state === undefined) {
+    state = { aliasWarned: false }
+    runtimeStates.set(resolved, state)
+  }
+  return state
 }
 
 /** 发送消息；serverchan code !== 0 时抛带中文指引的错误。 */
 export async function send(resolved, msg) {
-  if (resolved._aliasConflict !== null) {
+  const state = stateOf(resolved)
+  if (state.aliasWarned === false && Array.isArray(resolved.aliasConflict) && resolved.aliasConflict.length > 1) {
     try {
-      console.error(`[dsh-notifier/adapter:serverchan] sct/sendKey/sctKey 同时配置了多个（${resolved._aliasConflict.join('、')}），按 sct > sendKey > sctKey 优先级取 ${resolved._aliasConflict[0]}——请清理冗余配置避免认知分叉`)
+      console.error(`[dsh-notifier/adapter:serverchan] sct/sendKey/sctKey 同时配置了多个（${resolved.aliasConflict.join('、')}），按 sct > sendKey > sctKey 优先级取 ${resolved.aliasConflict[0]}——请清理冗余配置避免认知分叉`)
     } catch { /* stderr 不可用不致命 */ }
-    resolved._aliasConflict = null
+    state.aliasWarned = true
   }
   const url = endpointOf(resolved.sct)
   const form = { title: msg.title, desp: msg.content }

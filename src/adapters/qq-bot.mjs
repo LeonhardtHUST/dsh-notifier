@@ -18,6 +18,22 @@ const DEFAULT_API_BASE = 'https://api.sgroup.qq.com'
 const QQ_TEXT_MAX_CODEPOINTS = 2000
 const QQ_MARKDOWN_MAX_CODEPOINTS = 3000
 
+// 运行态与配置分离（上游 issues #45/#46）：出站配置自 v0.12 起由 OutboundSource
+// JSON 克隆后深冻结，send 期间写回 resolved 在严格模式下直接 TypeError（整个渠道
+// 静默失效）。WeakMap 以 resolved 对象身份为键：同一份活配置跨多次 send 复用
+// token/限速门/msg_seq；hot replace 产生新对象即新状态（重新换 token、seq 归零），
+// 旧状态随旧快照被 GC。配置本身保持纯 JSON 可序列化——resolve() 绝不回填运行态。
+const runtimeStates = new WeakMap()
+
+function stateOf(resolved) {
+  let state = runtimeStates.get(resolved)
+  if (state === undefined) {
+    state = { tokenManager: null, rateGate: null, msgSeq: 0 }
+    runtimeStates.set(resolved, state)
+  }
+  return state
+}
+
 /** 校验并归一化配置；缺失抛中文指引。 */
 export function resolve(cfg = {}) {
   const appId = str(cfg.appId)
@@ -42,10 +58,6 @@ export function resolve(cfg = {}) {
     // #33：默认发 markdown（msg_type=2 + markdown.content），仅显式 `markdown: false` 回退纯文本。
     // 默认开启是所有者对「新能力默认关」fail-closed 惯例的明确例外（taskbook v0.11 已拍板）。
     markdown: cfg.markdown !== false,
-    // 运行态（不序列化）：token 管理器 / 限速门 / msg_seq 计数
-    _tokenManager: undefined,
-    _rateGate: undefined,
-    _msgSeq: 0,
   }
 }
 
@@ -53,7 +65,8 @@ export function resolve(cfg = {}) {
  *  超长按码点分段逐条发送（每段独立 msg_seq，服务端按 msg_seq+内容去重）；任一段失败即抛错。
  *  2xx 即成功；4xx 带 {code,message} 抛中文指引。 */
 export async function send(resolved, msg) {
-  resolved._tokenManager ??= createTokenManager(async () => {
+  const state = stateOf(resolved)
+  state.tokenManager ??= createTokenManager(async () => {
     const response = await postJson(TOKEN_URL, { appId: resolved.appId, clientSecret: resolved.appSecret }, {
       timeoutMs: resolved.timeoutMs, channel: 'qq-bot',
     })
@@ -69,9 +82,9 @@ export async function send(resolved, msg) {
     // G-55：expires_in 秒→毫秒后归一（非有限/≤0 抛错，不再 || 7200 掩盖上游损坏）
     return { token: payload.access_token, expiresInMs: normalizeTtlMs(Number(payload.expires_in) * 1000, 'expires_in') }
   })
-  resolved._rateGate ??= createRateGate(resolved.rateMs)
+  state.rateGate ??= createRateGate(resolved.rateMs)
 
-  const token = await resolved._tokenManager.get()
+  const token = await state.tokenManager.get()
   const url = resolved.targetType === 'user'
     ? `${resolved.apiBase}/v2/users/${resolved.targetId}/messages`
     : `${resolved.apiBase}/v2/groups/${resolved.targetId}/messages`
@@ -86,10 +99,10 @@ export async function send(resolved, msg) {
   // 改为尝试期间 seq 冻结（计数器不动），全部段成功后才推进；下一条内容不同，
   // 即使撞 seq 也不会被服务端误去重（QQ 去重需 seq+内容双匹配）。分段同理：整条
   // 消息重试时每段沿用同一 (seq, 内容) 组合，已送达的前段被服务端幂等去重。
-  const baseSeq = resolved._msgSeq
+  const baseSeq = state.msgSeq
   let lastSeq = baseSeq
   for (let i = 0; i < pieces.length; i += 1) {
-    await resolved._rateGate.gate()
+    await state.rateGate.gate()
     const seq = (baseSeq + i + 1) % 1000000
     const response = await postJson(url, markdown
       ? { markdown: { content: pieces[i] }, msg_type: 2, msg_seq: seq }
@@ -116,5 +129,5 @@ export async function send(resolved, msg) {
     }
     lastSeq = seq
   }
-  resolved._msgSeq = lastSeq // 全部段成功才推进：失败/超时重试沿用同一 seq，幂等语义生效
+  state.msgSeq = lastSeq // 全部段成功才推进：失败/超时重试沿用同一 seq，幂等语义生效
 }

@@ -32,6 +32,21 @@ function pickConfigValue(cfg, ...names) {
   return undefined
 }
 
+// 运行态与配置分离（上游 issues #45/#46）：出站配置由 OutboundSource JSON 克隆后
+// 深冻结，send 期间写回 resolved 会 TypeError。token 管理器按 resolved 对象身份
+// 存进模块私有 WeakMap：同一份活配置跨多次 send 复用缓存；hot replace 生成新
+// 对象即重新换取 token，旧状态随旧快照 GC。resolve() 保持纯 JSON 配置快照。
+const runtimeStates = new WeakMap()
+
+function stateOf(resolved) {
+  let state = runtimeStates.get(resolved)
+  if (state === undefined) {
+    state = { tokenManager: null }
+    runtimeStates.set(resolved, state)
+  }
+  return state
+}
+
 /** 校验并归一化配置；缺失抛中文指引。 */
 export function resolve(cfg = {}) {
   const corpid = str(cfg.corpid)
@@ -57,8 +72,9 @@ export function resolve(cfg = {}) {
 
 /** 发送文本/markdown 应用消息；errcode !== 0 抛中文指引，token 失效自动换新重试一次。 */
 export async function send(resolved, msg) {
-  // 每条 resolved 配置独立 token 管理器（resolve 一次、send 多次，缓存随 resolved 存活）
-  resolved._tokenManager ??= createTokenManager(async () => {
+  // 每条活配置独立 token 管理器（同一 resolved 对象多次 send 复用缓存，鉴权 40014/42001 时作废重换）
+  const state = stateOf(resolved)
+  state.tokenManager ??= createTokenManager(async () => {
     const url = `${TOKEN_URL}?corpid=${encodeURIComponent(resolved.corpid)}&corpsecret=${encodeURIComponent(resolved.secret)}`
     const response = await getJson(url, { timeoutMs: resolved.timeoutMs, channel: 'wecom-app' })
     let payload
@@ -91,9 +107,9 @@ export async function send(resolved, msg) {
     }
   }
 
-  let payload = await attempt(await resolved._tokenManager.get())
+  let payload = await attempt(await state.tokenManager.get())
   if (payload?.errcode !== 0 && INVALID_TOKEN_CODES.has(payload?.errcode)) {
-    payload = await attempt(await resolved._tokenManager.get(true))
+    payload = await attempt(await state.tokenManager.get(true))
   }
   if (payload?.errcode !== 0) {
     const hint = payload?.errcode === 40056 ? '（agentid 不匹配：确认 AgentId 属于该 Secret 对应的应用）' : ''

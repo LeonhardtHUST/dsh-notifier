@@ -37,6 +37,21 @@ const BODY_MAX = 500
 /** level → libnotify urgency 映射（timeSensitive 视作最高档）。 */
 const URGENCY_OF = { timeSensitive: 'critical', active: 'normal', passive: 'low' }
 
+// 运行态与配置分离（上游 issues #45/#46）：出站配置由 OutboundSource JSON 克隆后
+// 深冻结，send 期间往 resolved 写探测缓存会 TypeError。BurntToast 能力探测结果按
+// resolved 对象身份存进模块私有 WeakMap：同一份活配置只探测一次，hot replace 生成
+// 新对象后重新探测（与旧「配置热重载会重新 resolve」语义一致）。
+const runtimeStates = new WeakMap()
+
+function stateOf(resolved) {
+  let state = runtimeStates.get(resolved)
+  if (state === undefined) {
+    state = { burntToastProbe: undefined }
+    runtimeStates.set(resolved, state)
+  }
+  return state
+}
+
 /** macOS 提示音名（系统自带音效，紧急级默认用它）。 */
 const MAC_SOUND = 'Ping'
 
@@ -179,19 +194,21 @@ function runCommand(file, args) {
 }
 
 /**
- * 发送桌面通知。silent 直接跳过；Windows 首次调用探测 BurntToast 并缓存于 resolved
- * （插件生命周期内只探测一次，配置热重载会重新 resolve = 重新探测）。
+ * 发送桌面通知。silent 直接跳过；Windows 首次调用探测 BurntToast 并缓存于
+ * 每配置运行态 WeakMap（插件生命周期内同一配置只探测一次，配置热重载产生新
+ * resolved 对象 = 重新探测）。
  * @returns {Promise<void>} 失败一律抛 NotifyError（中文指引），由上层渠道级 try/catch 兜住。
  */
 export async function send(resolved, msg) {
   const platform = process.platform
-  if (platform === 'win32' && resolved?.__burntToastProbe === undefined) {
+  const state = stateOf(resolved)
+  if (platform === 'win32' && state.burntToastProbe === undefined) {
     // 探测失败（无 PowerShell / 模块缺失）折叠为 false，绝不让探测本身抛
-    resolved.__burntToastProbe = runCommand('powershell.exe', [
+    state.burntToastProbe = runCommand('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-Command', 'if (Get-Module -ListAvailable BurntToast) { exit 0 } else { exit 1 }',
     ]).then(() => true, () => false)
   }
-  const probe = platform === 'win32' ? await resolved.__burntToastProbe : null
+  const probe = platform === 'win32' ? await state.burntToastProbe : null
   const command = buildDesktopCommand(platform, resolved, msg, probe)
   if (command.unsupported === 'silent') return
   if (command.unsupported !== undefined) {
