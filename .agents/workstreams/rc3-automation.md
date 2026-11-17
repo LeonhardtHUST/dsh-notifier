@@ -38,7 +38,8 @@
 7. Add `test/release-automation.test.mjs` and `test/upstream-sync.test.mjs` (hermetic; fake fetch/git temp repos; no network). Keep fixtures inline.
 8. Document operator setup in `docs/FORK_RELEASE.md`: exact npm Trusted Publisher UI fields (owner/repo/workflow filename/environment), first-publish window, provenance `repository.url` prerequisite, repo variable gate, recovery runbook, notification expectations (GitHub only), and known limits (README/CHANGELOG still upstream-scoped; tag protection; default-branch requirement).
 9. task-9 hardening after independent review (2026-11-17): the npm pack guard now rejects the two repo-only automation tests and `test/host/**`; the release verify job sets `DSH_HOME` under `runner.temp`; publish uses `--ignore-scripts`; the bootstrap runbook now lists the full gate, waits for the Release verify job, and requires an immutable annotated tag; sync error text strips URL userinfo and GitHub token formats before it reaches an issue. Focused tests: 29 pass; payload guard 320 files with host files and automation tests absent.
-10. Validation: focused node tests with hermetic guard, YAML sanity, `node --check` on scripts, full `npm test` if time allows, release guard. Neat-freak self-check, then ask lead for the git index slot; no commit/push/publish/remote changes done here.
+10. task-10 hardening (2026-11-17): merge/commit identity is injected per command with `-c user.name` / `-c user.email` (no global or local config writes); tests clear global/system config, clear identity env vars, and assert the merge commit author before/after local config stays unset. `PROTECTED_PATHS` now also pins `client.js`, `cordis.patch.yml`, and `test/.npmignore`; the clean-merge test confirms upstream edits to those files are reverted and the PR body says they need a manual port. The `workflow_run` alert also matches `timed_out`, `cancelled`, and `action_required`, and the sync job declares `checks: read` for check-run reads. Focused tests: 30 pass.
+11. Validation: focused node tests with hermetic guard, YAML sanity, `node --check` on scripts, full `npm test` if time allows, release guard. Neat-freak self-check, then ask lead for the git index slot; no commit/push/publish/remote changes done here.
 
 ## Owned files
 
@@ -105,7 +106,7 @@ Validation evidence (2026-11-17):
 node scripts/release-automation.mjs guard
   -> release guard ok: @leonhardthust/dsh-notifier@0.14.0 from LeonhardtHUST/dsh-notifier@main
 node --import ./test/_hermetic-network-guard.mjs --test test/release-automation.test.mjs test/upstream-sync.test.mjs
-  -> 29 tests, 29 pass, 0 fail (~45 s; throwaway git repositories, fake fetch, fake manifests)
+  -> 30 tests, 30 pass, 0 fail (~30 s; throwaway git repositories, fake fetch, fake manifests)
 node --check scripts/release-automation.mjs && node --check scripts/upstream-sync.mjs
   -> clean
 python -c "import yaml, glob; ..."  # YAML parse of all .github/workflows/*.yml

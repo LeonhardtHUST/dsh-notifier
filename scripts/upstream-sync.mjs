@@ -21,6 +21,9 @@ export const FORK_PACKAGE_NAME = '@leonhardthust/dsh-notifier'
 export const FORK_PACKAGE_REPOSITORY_URL = 'https://github.com/LeonhardtHUST/dsh-notifier'
 export const FORK_PACKAGE_REGISTRY = 'https://registry.npmjs.org/'
 export const FORK_PACKAGE_FILES = ['docs/FORK_RELEASE.md']
+export const SYNC_BOT_NAME = 'dsh-notifier-sync[bot]'
+export const SYNC_BOT_EMAIL = '41898282+github-actions[bot]@users.noreply.github.com'
+const GIT_IDENTITY_ARGS = ['-c', `user.name=${SYNC_BOT_NAME}`, '-c', `user.email=${SYNC_BOT_EMAIL}`]
 export const ISSUE_TITLE = '[automation] upstream sync needs attention'
 export const ISSUE_MARKER = '<!-- dsh-notifier-upstream-sync -->'
 export const PR_MARKER = '<!-- dsh-notifier-upstream-sync-pr -->'
@@ -36,8 +39,11 @@ const NETWORK_GIT_COMMANDS = new Set(['fetch', 'push', 'ls-remote', 'pull', 'clo
 // while the scoped name and fork repository URL stay pinned.
 export const PROTECTED_PATHS = [
   '.github/workflows',
+  'client.js',
+  'cordis.patch.yml',
   'scripts/release-automation.mjs',
   'scripts/upstream-sync.mjs',
+  'test/.npmignore',
   'test/release-automation.test.mjs',
   'test/upstream-sync.test.mjs',
   'docs/FORK_RELEASE.md',
@@ -121,8 +127,11 @@ export function applyForkOverrides(packageJsonText, {
 function git(cwd, args, { allowFailure = false } = {}) {
   const networkCall = NETWORK_GIT_COMMANDS.has(args[0])
   const timeout = networkCall ? GIT_NETWORK_TIMEOUT_MS : GIT_LOCAL_TIMEOUT_MS
+  // Merge/commit identity is injected per command, never written to the user's
+  // global or repository config. A GitHub runner checkout has no identity.
+  const fullArgs = args[0] === 'merge' || args[0] === 'commit' ? [...GIT_IDENTITY_ARGS, ...args] : args
   try {
-    const stdout = execFileSync('git', args, {
+    const stdout = execFileSync('git', fullArgs, {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -294,7 +303,7 @@ export function buildPullRequestBody({
   lines.push(
     `- Upstream \`main\`: ${upstreamMain ? `\`${String(upstreamMain).slice(0, 12)}\`` : 'unavailable'}${upstreamMainAhead ? ' (has commits not in `dev`)' : ' (contained in `dev`)'}`,
     '',
-    'Fork-owned files are restored after the merge: `package.json` keeps the scoped name and fork repository URL; workflows, release/upstream-sync scripts, their tests, and `docs/FORK_RELEASE.md` stay fork-owned.',
+    'Fork-owned files are restored after the merge: `package.json` keeps the scoped name and fork repository URL; workflows, release/upstream-sync scripts, their tests, and `docs/FORK_RELEASE.md` stay fork-owned. `client.js`, `cordis.patch.yml`, and `test/.npmignore` also stay fork-owned; port upstream changes to them by hand.',
     '',
     'Security: the sync job only performed git plumbing. The merged tree runs for the first time in this pull request\'s read-only CI.',
   )

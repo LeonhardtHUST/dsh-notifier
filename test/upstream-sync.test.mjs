@@ -16,6 +16,8 @@ import {
   PR_MARKER,
   PROTECTED_PATHS,
   SYNC_BRANCH,
+  SYNC_BOT_EMAIL,
+  SYNC_BOT_NAME,
   UPSTREAM_REPOSITORY,
   UpstreamSyncError,
   applyForkOverrides,
@@ -34,19 +36,25 @@ import {
   validateSyncContext,
 } from '../scripts/upstream-sync.mjs'
 
-function git(cwd, args, { allowFailure = false } = {}) {
+function git(cwd, args, { allowFailure = false, identity = false } = {}) {
   const env = {
     ...process.env,
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(cwd, '.git', 'testconfig'),
   }
+  delete env.GIT_AUTHOR_NAME
+  delete env.GIT_AUTHOR_EMAIL
+  delete env.GIT_COMMITTER_NAME
+  delete env.GIT_COMMITTER_EMAIL
   delete env.GIT_DIR
   delete env.GIT_WORK_TREE
   delete env.GIT_INDEX_FILE
+  // Fixture setup only. Production merge/commit identity is injected by the
+  // script under test; this flag is never used by the merge assertions.
+  const identityArgs = identity ? ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com'] : []
   try {
     const stdout = execFileSync('git', [
-      '-c', 'user.name=test',
-      '-c', 'user.email=test@example.com',
+      ...identityArgs,
       '-c', 'commit.gpgsign=false',
       '-c', 'core.autocrlf=false',
       ...args,
@@ -68,7 +76,7 @@ function write(cwd, file, content) {
 
 function commitAll(cwd, message) {
   git(cwd, ['add', '-A'])
-  git(cwd, ['commit', '-m', message])
+  git(cwd, ['commit', '-m', message], { identity: true })
 }
 
 function tempRepo(t) {
@@ -139,6 +147,7 @@ test('protected paths cover fork workflows, automation, and the package manifest
   for (const path of PROTECTED_PATHS) assert.equal(isProtectedPath(path), true, path)
   assert.equal(isProtectedPath('.github/workflows/release.yml'), true)
   assert.equal(isProtectedPath('package.json'), true)
+  for (const path of ['client.js', 'cordis.patch.yml', 'test/.npmignore']) assert.equal(isProtectedPath(path), true, path)
   assert.equal(isProtectedPath('src/index.mjs'), false)
   assert.equal(isProtectedPath('docs/FORK_RELEASE.md.bak'), false)
 })
@@ -184,6 +193,8 @@ test('untrusted text cannot mention third parties', () => {
   assert.ok(pr.includes(PR_MARKER))
   assert.equal(pr.includes('@evil'), false)
   assert.match(pr, /read-only CI/)
+  assert.match(pr, /client\.js/)
+  assert.match(pr, /port upstream changes to them by hand/)
 })
 
 test('a clean upstream merge restores fork-owned paths and keeps upstream source', (t) => {
@@ -220,6 +231,16 @@ test('error text never carries remote credentials or GitHub tokens', () => {
   assert.match(redacted, /https:\/\/\[redacted\]@github\.com/)
   assert.equal(redactUrlCredentials('token ghp_abcdefghijklmnopqrstuvwxyz0123456789').includes('ghp_abcdefghijklmnopqrstuvwxyz0123456789'), false)
   assert.equal(redactUrlCredentials('no secret here'), 'no secret here')
+})
+
+test('CI failure alert also covers timeout, cancel, and action-required conclusions', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/upstream-sync.yml', import.meta.url), 'utf8')
+  for (const conclusion of ['failure', 'timed_out', 'cancelled', 'action_required']) {
+    assert.match(workflow, new RegExp(`conclusion == '${conclusion}'`), conclusion)
+  }
+  assert.match(workflow, /head_repository\.full_name/)
+  assert.match(workflow, /head_branch == 'automation\/upstream-sync'/)
+  assert.match(workflow, /checks:\s*read/, 'check-runs reads need checks: read when permissions are explicit')
 })
 
 test('sync entry refuses dirty worktrees, non-CI runs, and foreign origins', (t) => {
@@ -264,6 +285,9 @@ test('a clean upstream merge still strips upstream-added workflows and restores 
   const cwd = tempRepo(t)
   write(cwd, 'package.json', basePackageJson({ files: ['src'], publishConfig: { access: 'restricted' } }))
   write(cwd, 'src/a.mjs', 'export const a = 1\n')
+  write(cwd, 'client.js', '// fork client\n')
+  write(cwd, 'cordis.patch.yml', 'fork: true\n')
+  write(cwd, 'test/.npmignore', 'host/\n')
   write(cwd, '.github/workflows/ci.yml', 'name: CI-base\n')
   commitAll(cwd, 'base')
 
@@ -277,17 +301,30 @@ test('a clean upstream merge still strips upstream-added workflows and restores 
   write(cwd, '.github/workflows/ci.yml', 'name: CI-upstream\n')
   write(cwd, '.github/workflows/upstream-added.yml', 'name: Upstream-added\n')
   write(cwd, 'src/upstream.mjs', 'export const upstream = true\n')
+  write(cwd, 'client.js', '// upstream client\n')
+  write(cwd, 'cordis.patch.yml', 'upstream: true\n')
+  write(cwd, 'test/.npmignore', 'upstream/\n')
   commitAll(cwd, 'upstream')
   git(cwd, ['checkout', 'dev'])
+
+  // The runner has no local or global git identity; only the script's injected
+  // bot identity may make the merge commit.
+  assert.notEqual(git(cwd, ['config', '--local', 'user.name'], { allowFailure: true }).status, 0)
+  assert.notEqual(git(cwd, ['config', '--local', 'user.email'], { allowFailure: true }).status, 0)
 
   const result = mergeUpstream({ cwd, baseRef: 'dev', upstreamRef: 'upstream-dev' })
   assert.equal(result.status, 'merged')
   assert.deepEqual(result.conflicts, [])
+  assert.equal(git(cwd, ['config', '--local', 'user.name'], { allowFailure: true }).status !== 0, true)
+  assert.equal(git(cwd, ['log', '-1', '--format=%an <%ae>|%cn <%ce>']).stdout.trim(), `${SYNC_BOT_NAME} <${SYNC_BOT_EMAIL}>|${SYNC_BOT_NAME} <${SYNC_BOT_EMAIL}>`)
 
   assert.equal(existsSync(join(cwd, '.github/workflows/upstream-added.yml')), false)
   assert.equal(readFileSync(join(cwd, '.github/workflows/ci.yml'), 'utf8'), 'name: CI-base\n')
   assert.equal(existsSync(join(cwd, '.github/workflows/release.yml')), true)
   assert.equal(existsSync(join(cwd, 'src/upstream.mjs')), true)
+  assert.equal(readFileSync(join(cwd, 'client.js'), 'utf8'), '// fork client\n')
+  assert.equal(readFileSync(join(cwd, 'cordis.patch.yml'), 'utf8'), 'fork: true\n')
+  assert.equal(readFileSync(join(cwd, 'test/.npmignore'), 'utf8'), 'host/\n')
 
   const packageJson = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'))
   assert.equal(packageJson.name, FORK_PACKAGE_NAME)

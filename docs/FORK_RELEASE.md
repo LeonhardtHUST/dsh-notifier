@@ -121,13 +121,18 @@ Entry guards: the sync refuses a dirty worktree and refuses to run outside GitHu
 Fork-owned paths restored after the merge:
 
 - `.github/workflows`
+- `client.js`
+- `cordis.patch.yml`
 - `scripts/release-automation.mjs`
 - `scripts/upstream-sync.mjs`
+- `test/.npmignore`
 - `test/release-automation.test.mjs`
 - `test/upstream-sync.test.mjs`
 - `docs/FORK_RELEASE.md`
 - `.agents/workstreams/rc3-automation.md`
 - `package.json` name, repository URL, public publish config, and the `docs/FORK_RELEASE.md` files entry
+
+`client.js` keeps the fork's loader, `cordis.patch.yml` keeps the fork bundle patch, and `test/.npmignore` keeps host harness files out of the npm payload. Upstream changes to these three files need a manual port; the sync will restore the fork versions.
 
 Restoration runs even when the merge has no conflicts. A clean merge can still add or edit a workflow file, so conflict-only restoration would let upstream code into the fork without review.
 
@@ -137,7 +142,7 @@ Fetch, network, push, dispatch, and GitHub API failures are caught inside the al
 
 Conflicts inside the fork-owned paths are resolved in favor of the fork. Conflicts anywhere else stop the merge and create or update one issue, `[automation] upstream sync needs attention`, which mentions `@LeonhardtHUST`. The same issue is updated in place and closed when the sync becomes healthy again.
 
-CI failure alerts come from the `workflow_run` trigger. They match the `CI` workflow, `.github/workflows/ci.yml`, the fork head repository, the `automation/upstream-sync` head branch, and either a pull request or a dispatched run. The alert job reads the pull request through the GitHub API and never checks out the pull request head. Notification is a GitHub issue mention only. Email delivery depends on the watcher's GitHub notification settings.
+CI failure alerts come from the `workflow_run` trigger. They match the `CI` workflow, `.github/workflows/ci.yml`, the fork head repository, the `automation/upstream-sync` head branch, and either a pull request or a dispatched run. A run alerts when it concludes `failure`, `timed_out`, `cancelled`, or `action_required`. The alert job reads the pull request through the GitHub API and never checks out the pull request head. Notification is a GitHub issue mention only. Email delivery depends on the watcher's GitHub notification settings.
 
 Upstream changes to workflow files, release scripts, or their tests need a manual port. The daily sync will not overwrite them.
 
