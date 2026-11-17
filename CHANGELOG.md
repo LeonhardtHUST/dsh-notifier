@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.14.1] - 2026-11-18
+
+### 桌面通知与 Native 面板
+
+- 修复 DSH Desktop Native 面板无法滚动的问题。通知渠道列表、配置向导和详情页现在各自拥有受宿主高度约束的滚动区域，切换页面会回到顶部。
+- Native 控制面板将「通知渠道」改为「远程通知渠道」，并新增独立的「桌面通知」入口。桌面通知和终端响铃不再混在远程渠道配置里。
+- Windows 10/11 使用系统自带的 WinRT Toast，不再要求 BurntToast；DSH Desktop 已安装时优先使用 `com.deepseek.dsh`，否则回落到 Windows PowerShell 的应用标识。通知文本经过编码和 XML 转义，失败时才回落到 NotifyIcon 气泡。
+- Linux 优先调用 `notify-send`，命令不存在时回落到 freedesktop `gdbus`。GNOME 和 KDE Plasma 有专门的支持说明，其他桌面环境按标准路径尝试。
+- 新增 `local.get` / `local.save` Native RPC。桌面通知和终端响铃共享现有配置事务、Hot Apply、YAML 管理保护和健康状态，不改变远程渠道的认证路径。
+- 配置撤销、空配置 YAML 行、存储读取失败和错误诊断增加了 fail-closed 回归测试。桌面通知覆盖了空标题/正文、最大编码长度、恶意文本、Toast 静音和真实 Windows 11 发送。
+
+### 验证
+
+- `npm test`：**2137 tests，2137 pass，0 fail，0 skip**。
+- Windows 11 26H2：WinRT Toast 真实发送成功；空标题/正文及最大长度脚本在 Windows PowerShell 5.1 解析并执行成功。
+- Linux `notify-send` / `gdbus` 和 DSH Desktop Native 页面已做协议与布局测试，尚未在 Linux 真机或已认证的 DSH Desktop 页面完成端到端操作。
+
 ## [0.14.0] - 2026-11-17
 
 Scoped fork release: `@leonhardthust/dsh-notifier`, maintained at `LeonhardtHUST/dsh-notifier`; the original project and prior unscoped releases remain attributed to `THEWOLFWALKER/dsh-notifier`.

@@ -25,7 +25,7 @@ Bring DeepSeek Harness to your phone: notifications, approvals, questions, remot
 
 </div>
 
-`@leonhardthust/dsh-notifier@0.14.0` · test/ 2084 tests · 2084 automated contract tests
+`@leonhardthust/dsh-notifier@0.14.1` · test/ 2137 tests · 2137 automated contract tests
 
 ## What it does
 
@@ -78,11 +78,23 @@ Restart DSH once so the new Host plugin and `client.js` are loaded. Then:
 
 Outbound configuration changes are hot-applied after installation. Inbound transports can still show **Restart pending** when their long-lived connection must be recreated.
 
+## Desktop notifications or remote channels?
+
+The Native **Notify & Control** panel keeps the two apart:
+
+- **Desktop notifications** appear on this computer only. Windows 10/11 uses the built-in toast API through `powershell.exe`, with no BurntToast module and no registry or shortcut writes. Linux uses `notify-send`, falling back to `gdbus`; GNOME and KDE Plasma are supported, other desktops are tried without specific adaptation. macOS uses Notification Center through `osascript`. Turn the switch on under **Desktop notifications**, then send a test notification.
+- **Remote channels** are for when you leave the computer. They need provider credentials and send over the network. The list below has 28 outbound entries; 26 are remote, while Bell and Desktop stay local.
+
+The Windows path was exercised on a real Windows 11 26H2 desktop, including an empty title/body and boundary scripts. The Linux path is contract-tested only: this release has no Linux desktop run. When the WinRT toast API is unavailable, Windows falls back to a NotifyIcon balloon. That fallback cannot mute itself, so the sound setting may not apply, and the balloon disappears after about three seconds.
+
+If nothing appears, check Do Not Disturb or Focus settings first.
+
 ## Pick the mode you need
 
 | I want to… | Start here |
 | --- | --- |
-| Only receive task notifications | Configure one outbound channel in **Notify & Control** |
+| Get a pop-up on this computer | Turn on **Desktop notifications** in **Notify & Control** |
+| Receive notifications on my phone | Configure one remote channel in **Notify & Control** |
 | Approve / answer questions from my phone | Add a supported inbound channel, then pair your identity |
 | Talk to the agent remotely | Pair your identity, then send plain text in the private bot chat |
 | Steer a running task | Send `! <instruction>` from the bound private chat |
@@ -95,6 +107,8 @@ Outbound configuration changes are hot-applied after installation. Inbound trans
 
 **Inbound control (6):** Telegram, Feishu, QQ official bot, WxPusher, WeChat iLink, DingTalk.
 
+**Local (2, included in the 28 above):** Bell and Desktop, turned on from **Desktop notifications** instead of the remote list.
+
 <details>
 <summary><strong>Full channel matrix (generated from the channel registry)</strong></summary>
 
@@ -105,7 +119,7 @@ Outbound configuration changes are hot-applied after installation. Inbound trans
 | `bark` | Bark (iOS) | device key (or self-host URL) | ✅ |
 | `bell` | Terminal bell (local) | — | local |
 | `chanify` | Chanify (iOS) | token (or self-host) | ✅ |
-| `desktop` | Desktop notification (local) | — (Windows needs BurntToast module) | local |
+| `desktop` | Desktop notification (local) | — (Windows 10/11 toast; Linux notify-send or gdbus; macOS osascript) | local |
 | `dingtalk` | DingTalk custom robot | webhook + secret (HMAC sign) | ✅ |
 | `discord` | Discord webhook | webhook URL | ✅ |
 | `feishu` | Feishu custom bot | webhook (+ sign secret) | ✅ |

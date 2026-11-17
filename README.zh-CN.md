@@ -24,7 +24,7 @@
 
 </div>
 
-`@leonhardthust/dsh-notifier@0.14.0` · test/ 2084 个测试 · 2084 个自动化契约测试
+`@leonhardthust/dsh-notifier@0.14.1` · test/ 2137 个测试 · 2137 个自动化契约测试
 
 ## 它解决什么
 
@@ -77,11 +77,23 @@ dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 
 装好以后，**出站配置修改会 Hot Apply**。入站 SDK / WebSocket / 长轮询如果页面显示 **「等待重启」**，仍需要重启来重建连接。
 
+## 桌面通知还是远程渠道？
+
+Native「通知与控制」把两者分开：
+
+- **桌面通知**只在这台电脑上显示。Windows 10/11 通过 `powershell.exe` 调系统自带 Toast API，不需要 BurntToast 模块，也不写注册表或快捷方式。Linux 先走 `notify-send`，缺失时回落到 `gdbus`；支持 GNOME 和 KDE Plasma，其他桌面环境按标准方式尝试，但未专门适配。macOS 通过 `osascript` 走通知中心。在「桌面通知」里打开开关，再发一条测试通知即可。
+- **远程通知渠道**用于离开电脑以后，需要 provider 凭证并通过网络安全发送。下面的出站列表共 28 项，其中 26 个是远程渠道，Bell 和 Desktop 属于本机。
+
+Windows 路径已在真实 Windows 11 26H2 桌面验证，包括空标题/空正文和边界脚本。Linux 路径只有契约测试：本版没有 Linux 桌面真机运行记录。Windows 上 WinRT Toast 不可用时会回落到 NotifyIcon 气球提示，这条路径无法控制静音，所以「静音」设置可能不生效，气球约 3 秒后消失。
+
+没看到弹窗时，先检查系统的勿扰/专注模式。
+
 ## 你需要哪一种用法
 
 | 你的目标 | 从这里开始 |
 | --- | --- |
-| 只想收到任务通知 | 在「通知与控制」配置一个出站渠道 |
+| 想在电脑前收到弹窗 | 在「通知与控制」打开「桌面通知」 |
+| 离开电脑后也想收到任务通知 | 在「通知与控制」配置一个远程渠道 |
 | 想在手机批准 / 回答问题 | 再配置一个支持的入站渠道，然后完成成员配对 |
 | 想直接在手机和 Agent 对话 | 配对后，在机器人私聊直接发文字 |
 | 想中途纠偏正在执行的任务 | 在已绑定私聊发送 `! <补充指令>` |
@@ -93,6 +105,8 @@ dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 **出站 28 个：** Bark、Bell、Chanify、Desktop、钉钉、Discord、飞书、Google Chat、Gotify、iGot、Mattermost、ntfy、OneBot 11、PushDeer、Pushover、PushPlus、Qmsg、QQ 官方机器人、Server酱、Slack、Microsoft Teams、Telegram、Webhook、企业微信群机器人、企业微信应用、WPS Bot、WxPusher、息知。
 
 **入站控制 6 个：** Telegram、飞书、QQ 官方机器人、WxPusher、微信 iLink、钉钉。
+
+**本机 2 个（含在上面的 28 个出站里）：** Bell、Desktop，从「桌面通知」开关配置，不出现在远程渠道列表里。
 
 不同 provider 的按钮、附件、送达回执、重连、账号额度并不一样。项目只按真实证据等级声明能力，详见 [兼容性矩阵](docs/compatibility-matrix.md)。
 

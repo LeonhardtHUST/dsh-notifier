@@ -2,12 +2,12 @@
 
 这是人类和 agent 的导航页。每个问题尽量只指向一个权威来源；运行时真相仍是 `src/` 与 `test/`，版本真相是 `package.json`。
 
-> 当前工作线：`@leonhardthust/dsh-notifier@0.14.0` 正在准备首次 scoped npm 发布；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 发布链已配置。目标宿主为 DSH `0.2.2-rc.3`，真实 provider/真机证据仍单独记录。
+> 当前工作线：`@leonhardthust/dsh-notifier@0.14.1` 正在准备发布；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 发布链已配置。目标宿主为 DSH `0.2.2-rc.3`，Windows 11 26H2 桌面 Toast 已实测，Linux 与已认证 Native UI 端到端证据仍单独记录。
 
 ## 当前基线
 
-- 当前发布线：**0.14.0**（包版本字段 `0.14.0`，scoped 包 `@leonhardthust/dsh-notifier` 已发布；fork `main`/tag/Release 已完成）：OutboundSource 配置保持深冻结，适配器运行态进入私有 WeakMap；DSH `0.2.2-rc.3` 兼容声明、headless/web 隔离 smoke 和生命周期 Promise 兼容已完成。历史正式发布线 **v0.13.1** 仍归属于上游 unscoped 包。
-- 当前测试：`2084`（2084 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，Node test 并发上限4）。历史 v0.13.1 为 `2011`、v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`、v0.10.0 为 `1605`、v0.9.7 为 `1548`、v0.9.6 为 `1544`、v0.9.5 为 `1531`、v0.9.0 为 `1352`、npm `0.8.6` 契约为 `909`。
+- 当前发布线：**0.14.1**（包版本字段 `0.14.1`，正在准备 fork `main` 发布）：Native 面板滚动、本机/远程通知分离、Windows 原生 Toast、Linux freedesktop 回落和本机配置 fail-closed 已完成；上一版 `0.14.0` 的 tag/Release/npm 记录保留。
+- 当前测试：`2137`（2137 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，Node test 并发上限4）。历史 v0.14.0 为 `2084`，v0.13.1 为 `2011`；v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`。
 - 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`dev` 做开发、`main` 做发布；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `dev` 的审查 PR。
 - 生态收录：v0.13.1 已发布；Awesome DSH / dshfind 的公开描述刷新是发布后的外部同步步骤，不影响仓内版本事实。
 - Node.js ESM、Node `>=22`、无生产依赖、无构建步骤；28 个出站渠道，Telegram/Feishu/QQ Bot/WxPusher/WeChat iLink/DingTalk 六个入站控制通道。

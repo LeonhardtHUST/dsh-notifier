@@ -2,7 +2,7 @@
 
 ## Current release baseline
 
-Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.0** (published 2026-11-17; tag `v0.14.0`, GitHub Release and npm `latest` are complete).
+Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.1** (release candidate; the 0.14.0 tag and GitHub Release remain immutable).
 
 The previous upstream release was `dsh-notifier@0.13.1`; its tag and GitHub Release remain immutable history. Real-device/provider evidence remains explicitly open for every line.
 
@@ -107,7 +107,7 @@ Recovery address: use the actual `Web 管理台已就绪` startup line; never gu
 
 | Symptom | First checks |
 |---|---|
-| No Native Sidebar entry | package is `0.14.0+`, DSH restarted, Host `0.2.2-rc.3`, client module served |
+| No Native Sidebar entry | package is `0.14.1+`, DSH restarted, Host `0.2.2-rc.3`, client module served |
 | Native panel fails to load | DSH slot/client errors, `client.js` package payload, Connection/webServer control route |
 | No outbound delivery | Channels health, real test result, `channel-selfcheck.mjs`, adapter validation |
 | Saved outbound still uses old credentials | Confirm actual registry version; current line must read the live `OutboundSource` |
@@ -117,6 +117,9 @@ Recovery address: use the actual `Web 管理台已就绪` startup line; never gu
 | `ask_user` missing | installed version, questions assembly, task/session binding |
 | `/pair` rejected | private-chat boundary, code age/use state, failure lock |
 | Advanced Console unavailable | `admin.enabled`, loopback bind, current port; Native will not auto-enable it |
+| No Windows desktop toast | Windows 10/11, Do Not Disturb / Focus. The WinRT toast path uses PowerShell and needs no BurntToast module; the NotifyIcon balloon fallback has no audio control |
+| No Linux desktop notification | graphical session, `notify-send` (libnotify) or `gdbus` (glib2); GNOME/KDE supported, other desktops best effort. This line has no Linux real-machine evidence |
+| Native panel content clipped or cannot scroll | `dn-scroll` owns `height:100%; overflow-y:auto` inside the host `main` box; check for a stale client bundle or changed host slot geometry, then restart DSH |
 | Behavior differs on provider/device | consult `docs/memory/risks.md`; contract tests do not certify provider payloads |
 
 Provider-specific media, callback ACK and long-connection behavior remains evidence-scoped. Do not turn “contract-tested” into “real-device-verified”.
@@ -143,9 +146,12 @@ Before publishing:
 6. boot DSH;
 7. open Native surface;
 8. save/test one outbound channel;
-9. verify the next real notifier operation sees the saved channel without restart;
-10. exercise one inbound command / question path when available;
-11. optionally run `node test/host/harness.smoke.mjs` against the installed 0.2.2-rc.3 host for the disposable web/headless seam smoke.
+9. turn on **Desktop notifications** and send a desktop test notification; expect a system toast on Windows 10/11, or the NotifyIcon balloon fallback when WinRT is unavailable (that path has no audio control);
+10. verify the next real notifier operation sees the saved channel without restart;
+11. exercise one inbound command / question path when available;
+12. optionally run `node test/host/harness.smoke.mjs` against the installed 0.2.2-rc.3 host for the disposable web/headless seam smoke.
+
+The Windows desktop path was exercised on a real Windows 11 26H2 machine (toast, empty title/body, boundary scripts). Linux delivery has contract coverage only; run it once on a GNOME or KDE Plasma desktop before calling it verified. This line did not get an end-to-end run inside the installed DSH GUI because direct browser access to that GUI requires authentication. The Native scroll container was verified in a real browser reproducing the host `main` slot fixed-height geometry; repeat the installed-UI scroll and desktop-notification smoke when an authenticated GUI session is available.
 
 Record unverified real-provider gaps instead of hand-waving them away.
 

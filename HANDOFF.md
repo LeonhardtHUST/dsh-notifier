@@ -1,42 +1,34 @@
 # dsh-notifier 当前交接快照
 
-更新时间：2026-11-17。维护 fork：`LeonhardtHUST/dsh-notifier`；npm：`@leonhardthust/dsh-notifier@0.14.0`；上游：`THEWOLFWALKER/dsh-notifier`。`main`、`dev` 和 `codex/rc3-scoped-release` 已统一到 `7ab9861`；`v0.14.0` tag 与 GitHub Release 已创建，npm latest 已发布。Trusted Publisher 已绑定 `release.yml` / `npm-release`，后续版本自动发布开关已配置。历史发布快照保留在 `docs/new-host/history/` 和 CHANGELOG，本文件只描述当前状态。
+更新时间：2026-11-18。维护仓库 `LeonhardtHUST/dsh-notifier`，发布包 `@leonhardthust/dsh-notifier`；上游 `THEWOLFWALKER/dsh-notifier` 的署名与历史发布保持不变。
 
-| 测试 | `npm test` **2084 tests**（2084 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
+## 任务状态 type:state
 
-## 已实现
+- 当前主题分支 `codex/desktop-notify-scroll`，基线 `815d49f`；目标版本 `0.14.1`，尚待提交推送及正式发布验证。
+- 已实现 Native 面板滚动、本机/远程通知入口分离、Windows 10/11 WinRT Toast、Linux notify-send/gdbus 回落。
+- `local.get`/`local.save` 复用 canonical 出站事务；YAML 管理不能从 UI 关闭。撤销不会被启动快照复活；来源读失败报 storage-failed。
+- `engines.dsh` 仍为精确 `0.2.2-rc.3`；无新增强制运行时依赖，无新增监听器或认证模式。
 
-- #45/#46：OutboundSource 保留 JSON clone/deep freeze；QQ Bot、WeCom app、desktop、ServerChan 发送运行态在模块私有 WeakMap，不再写冻结配置。测试覆盖 cold/hot replace、token 复用/刷新、seq 重试、探测/告警 latch、跨配置隔离。
-- #49/#51：DSH 精确目标 `0.2.2-rc.3`；optional session peer 同版本、Cordis `~4.1.0`；静态 inject 仅 tools/agents，Web Fiber 可选，headless 不再 PENDING。生命周期监听器同步执行副作用并返回 Promise，拒绝被容错处理。
-- scoped package、Cordis patch name、Native client factory ID 均为 `@leonhardthust/dsh-notifier`；插件行、service、RPC 和 state namespace 保持 `dsh-notifier`。同一 profile 不能与原 unscoped 包共装。
-- 继承 dev 的状态 schema/命令准入收紧：旧/未知状态不作为身份与凭据权威；首次显式写前保留 `state.json.pre-v0.14-legacy.<timestamp>`，升级前备份并重新配置/配对；不能手改 schema 绕过。assets/quiet 能力默认关。
-- CI：main 版本变更触发完整发布门，OIDC 发布限 `main` 和 `npm-release` 环境；当前 `NPM_AUTO_PUBLISH=false`。上游每日同步只提 PR 到 fork dev，保护 fork 包/客户端/工作流，显式 dispatch 只读 CI；冲突、失败、超时等以去重 issue @LeonhardtHUST 通知，不自动合并或发版。
+| 测试 | `npm test` **2137 tests**（2137 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
 
 ## 验证与审查
 
-- 最终隔离完整回归：2084/2084；无资源上限的并发加其他 focused 进程曾触发短超时，默认 npm test 已固定 concurrency=4。日志在系统临时目录，不进 git/npm。
-- release/host guard、28 渠道矩阵、src/client 语法、npm pack payload guard 通过。npm archive 不含 agent 配置、automation scripts/tests、host harness；FORK_RELEASE 指南随包发布。
-- Flash 独立审查：focused 411/411、rc3 host smoke 19/19（web 401 admission、headless 本地 HTTP POST、真实 Cordis EventContext 9/9）。Sol 只读供应链复审通过；发现的机器人 git 身份、checks:read、scoped 客户端保护和失败状态告警已修订。
-- 远端已设置：Issues 开启；Actions 默认 read；允许 GITHUB_TOKEN 创建 PR；npm-release 环境仅 main；自动 npm 发布关闭。尚需真实 CI/npm/OIDC 验证。
+- 独立 Sol 静态审查指出的空文本编码、配置撤销、YAML 无选项行、读失败假成功、开关禁用及诊断泄漏均已修复，并有回归覆盖。
+- 最终完整回归 2137/2137，0 fail、0 skip。release/host/channel-matrix/syntax/payload 门禁均通过；npm dry-run payload 322 文件，无开发工具目录。
+- Windows 11 26H2：真实 WinRT Toast 成功，归属 `com.deepseek.dsh`；恶意文本作为字面量存入通知 XML；静音 XML、空文本及最大长度脚本均在 PowerShell 5.1 验证。
+- Chromium 复刻已安装 rc3 的 main slot 高度约束：旧布局 clientHeight=1532、scrollTop=0；新布局 clientHeight=565、scrollHeight=1532、scrollTop=400。
 
-## 发布步骤与授权
+## 失败与弯路 type:dead-end
 
-用户已授权 push 此 fork、更新 dev/main、创建 tag/Release、配置 Actions 及首次公开 scoped npm 发布；npm 用户 `leonhardthust` 已自行 web login/2FA。无上游写权限，不向上游 push。
+- Get-StartApps 探测 → 本机耗时 11–17 秒，已改为只检查 DSH 开始菜单快捷方式存在性并按冻结配置缓存。
+- 并发运行多个全量套件 → 触发已有短计时测试抖动；最终全量统一串行执行。
+- 直接打开 DSH GUI URL → 需要认证，本线没有宣称已安装新 Native UI 端到端验证，也未修改运行中 profile。
 
-1. 提交最后计数与交接，确认 clean；推送 topic/dev，等待 CI。
-2. fast-forward main 到同一 reviewed dev commit，等待 Release verify。
-3. 给精确提交创建不可变 `v0.14.0` tag，首次 `npm publish --access public --ignore-scripts`，校验 registry artifact。
-4. 使用 `npm trust github @leonhardthust/dsh-notifier --file release.yml --repo LeonhardtHUST/dsh-notifier --env npm-release --allow-publish`；需要账户二次验证时由用户操作，不共享凭据。
-5. 使用下一 patch 0.14.1 实测 OIDC/provenance，通过后启用 `NPM_AUTO_PUBLISH=true`；测试上游检测及通知。
+## 发布与下一步 type:progress
 
-## 剩余证据边界
+1. 完成最终全量与 release/host/channel-matrix/payload 门禁。
+2. 将 reviewed topic fast-forward 到 fork `dev`，再到 `main`；只 push `origin`，不写 upstream。
+3. GitHub Release workflow 使用 npm OIDC；仓库变量 `NPM_AUTO_PUBLISH=true` 已实查。检查 CI、npm latest、provenance、不可变 tag，再创建 GitHub Release。
+4. Linux GNOME/KDE 只有契约证据；NotifyIcon 回落无法控制静音；真实 IM/provider 投递与已认证 Desktop UI 仍待补证。
 
-- QQ #26 的真实按钮渲染仍未验证，不能用 label/permission 契约测试宣称修复；#25 是原作者维护公告。
-- 真实 IM/provider payload、ACK、重连、媒体限制、桌面 BurntToast、rc3 Native 浏览器渲染未新增实测。隔离宿主/本地协议测试不等于真实渠道送达。
-- npm registry-artifact 安装和真实 Actions/OIDC 结果在发布后补证，见 `docs/FORK_RELEASE.md` 和 `docs/memory/risks.md`。
-
-## 提交与工程入口
-
-代码基线 `aabc7d7`；本轮主要提交：`d4266b3` adapter 修复、`31d3a5d` rc3/生命周期、`e71dd66` 测试可移植性、`7ea53d7` 公共文档、`8c10a60` release/sync CI、`398aa93` scoped 整合、`d745f7c` 机器人身份/保护路径、`1b0aa96` 告警兼容。细节及 docs 提交见各 `.agents/workstreams/rc3-*.md`。
-
-后续先读 AGENTS、docs/KNOWLEDGE_BASE、docs/memory；运行时以 src/test 为准，版本以 package.json 为准。`docs/new-host/` 的 rc5 T00–T29 是历史计划，不表示全部完成。
+工程入口：AGENTS、docs/KNOWLEDGE_BASE、docs/memory。运行时以 src/test 为准，版本以 package.json 为准。文档/记忆工具未暴露时使用 tracked docs/memory 和 workstream 留存事实。
