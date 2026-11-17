@@ -1,6 +1,24 @@
 # Changelog
 
-## [Unreleased]
+## [0.14.0] - 2026-11-17
+
+Scoped fork release: `@leonhardthust/dsh-notifier`, maintained at `LeonhardtHUST/dsh-notifier`; the original project and prior unscoped releases remain attributed to `THEWOLFWALKER/dsh-notifier`.
+
+### 验证
+
+- `npm test`：**2082 tests，2082 pass，0 fail，0 skip**，在隔离临时 `DSH_HOME` 执行。
+- `node scripts/verify-release.mjs`、`node scripts/verify-host-compat.mjs`、channel matrix 和 npm payload guard 均通过。
+
+
+- Fix upstream #45/#46 without weakening immutable outbound snapshots: QQ Bot and WeCom token/rate/sequence state, desktop probe caching, and ServerChan alias diagnostics no longer write to frozen resolved configuration. Regression coverage goes through the outbound runtime source, including hot replacement.
+- Target DSH `0.2.2-rc.3` using checked host contracts and exact compatibility metadata. The development branch's optional Web fiber fixes #49: a TUI/headless profile no longer waits for a required `connection` service. #51's version rejection is addressed for the declared target, not by a blanket future-version exemption.
+- Return promises from lifecycle listeners, including synchronous void handlers, so older hosts can attach rejection handlers safely. Contain callback failures without changing the synchronous event side effects or desktop fallback behavior.
+- The scoped loader name changes while the plugin row, service, RPC route and state namespace remain `dsh-notifier`. Do not install this fork and the original package together in a profile.
+- QQ issue #26 remains a provider/device validation gap: existing label/permission contract fixes do not prove that a real client renders the keyboard. No new provider receipt or real-device claim is made.
+
+### Upgrade warning
+
+This release includes the unreleased development changes below. Back up existing state before upgrading. Unversioned or unknown-schema identity/credential state is not trusted; explicitly reconfigure credentials and pair identities again. Remote `assets` and `quiet` capabilities are opt-in. Original files are preserved as described below; old authorization state is never silently imported.
 
 ### 命令准入与来源统一（T04）
 

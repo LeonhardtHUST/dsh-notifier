@@ -3,7 +3,7 @@
 // 确保导出面本身就是消费方能拿到的那个面。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createFakeNotifier } from 'dsh-notifier/testing'
+import { createFakeNotifier } from '@leonhardthust/dsh-notifier/testing'
 import { PUBLIC_API_VERSION } from '../src/public.mjs'
 
 test('testing fake: version mirrors the public notifier API version', () => {

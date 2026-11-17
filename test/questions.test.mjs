@@ -1233,7 +1233,11 @@ test('CC-1 精确 card 送达 + 正确 chat：pushedTo 含 (channel, userId, cha
     channelTypes: ['telegram'],
   })
   const pending = rig.bridge.askQuestions({ questions: [SINGLE] })
-  await sleep(30)
+  assert.equal(await waitFor(() => {
+    const key = rig.store.keys('aq:')[0]
+    const row = key === undefined ? null : rig.store.get(key)
+    return Array.isArray(row?.pushedTo) && row.pushedTo.length === 1
+  }), true, '卡片送达证据应在有界等待内落账')
   assert.equal(rig.instances[0].cards.length, 1, '卡片已送达')
   // 精确 chat 回复编号 → exact 命中
   rig.bus.accept({ channel: 'telegram', accountId: 'TG_APP', userId: '100', chatId: '100', messageId: 'm1', text: '1' })

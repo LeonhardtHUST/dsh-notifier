@@ -6,7 +6,7 @@
 # 在 profile 的 cordis.patch.yml 里覆盖本行 config.channels 即可配置渠道。
 - insert:
     - id: dsh-notifier
-      name: 'dsh-notifier'
+      name: '@leonhardthust/dsh-notifier'
       config:
         enabled: true
         debounceMs: 10000

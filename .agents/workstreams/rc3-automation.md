@@ -3,7 +3,7 @@
 - Agent identity: `automation | DeepSeek Harness worker | Windows D:\Projects\GitHub\dsh-notifier`
 - Agent: `automation`
 - Branch: `codex/rc3-scoped-release` (base `dev`; shared with `codex` release work, no checkout)
-- Status: `active`
+- Status: `done`
 - Start/end: `2026-11-17 -> active`
 - Scope: prepare fork-local GitHub Actions for the scoped npm package `@leonhardthust/dsh-notifier` (main version-change release via OIDC trusted publishing, idempotent recovery, full tests/release guard/pack payload guards) and a daily, non-executing upstream `THEWOLFWALKER/dsh-notifier` dev/main sync that opens a fork-dev PR and dedupes failure issues.
 
@@ -97,7 +97,7 @@ Remaining risks recorded for the reviewer: GitHub Actions API semantics cannot b
 
 ## Handoff
 
-Implementation is complete and focused tests pass; no commit/push/publish or npm/GitHub remote settings were changed from this session.
+Implementation and review revisions are committed as `8c10a60` on `codex/rc3-scoped-release`; no push or publish was performed by this worker. The commit contains the three workflows, both automation scripts, their focused tests, `docs/FORK_RELEASE.md`, and this workstream. Full suite was run separately by lead as 2082/2082 in an isolated temporary `DSH_HOME`. Remaining external checks are GitHub Actions/OIDC and registry publication.
 
 Validation evidence (2026-11-17):
 

@@ -75,9 +75,25 @@ Starting line `0.2.1-rc.5` → target `0.2.2-rc.3`; installed index dirs in span
 
 ## Handoff
 
-Code/tests/smoke are complete and committed as `49a1f76` on
+Code/tests/smoke are complete and committed as `31d3a5d` on
 `codex/rc3-scoped-release` (host source/tests/scripts/matrix/workstream; no
 `package.json`, no `client.js`, no `test/client-module`). `package.json`
 compatibility fields were handed to lead for the scoped/release metadata commit.
 No push was performed by this worker; the git-index slot is released after the
 commit report.
+
+## Final review revision (2026-11-17)
+
+- Commit-hash correction: this workstream previously named the pre-amend commit
+  `49a1f76`; the actual committed host revision is `31d3a5d` (the amend only
+  added this handoff record).
+- Host-test copy filter: `test/host/harness.mjs` now refuses sensitive paths
+  (`.env`, `.env.*`, `.npmrc`, `.yarnrc`, `.pypirc`, `.netrc`,
+  `.credentials`/`credentials`, `state.json`, `state/`, `.ssh/`, `.gnupg/`,
+  `id_rsa`, `id_ed25519`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
+  `bootstrap-paircode.txt`) anywhere in a copied package payload. It rejects by
+  path name only and never reads file contents. The guard also skips
+  `node_modules`/`.git`/agent directories at any depth, not only at the top
+  level. Covered by `test/host/harness.copy-filter.test.mjs`; no product source
+  changed.
+

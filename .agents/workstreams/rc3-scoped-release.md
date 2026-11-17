@@ -1,0 +1,17 @@
+# Workstream: rc3 scoped release
+
+- Agent identity: `lead | gpt-6.1-sol | Windows DSH Desktop`
+- Agent: `lead`
+- Branch: `codex/rc3-scoped-release` (from `origin/dev` at `aabc7d7`)
+- Status: active
+- Start/end: `2026-11-17 -> active`
+- Scope: repair public issues, certify DSH 0.2.2-rc.3 integration, publish the maintained fork as `@leonhardthust/dsh-notifier`, and enable secure release/upstream automation.
+- Plan: inspect upstream issues and inherited dev changes; delegate disjoint adapter, host and CI work; independently review; revise; run focused/full tests and payload guards; update scoped identity and release facts; promote reviewed dev to main without rewriting history; first npm publish; configure/test OIDC and upstream PR notification; reconcile docs and leave a clean committed tree.
+- Owned files: scoped/version sections of package.json after host handoff; cordis.patch.yml; scoped package references/tests as necessary after coordination; CHANGELOG.md; README.md; README.zh-CN.md; src/admin/ui/markup.mjs version; scripts/verify-release.mjs; HANDOFF.md; AGENTS.md fork provenance; .gitignore workstream exception; docs/KNOWLEDGE_BASE.md; docs/memory/; this workstream. Public usage/versioning docs are delegated to task-5.
+- Do not touch: adapter, host and CI worker scopes until handoff. Workers do not edit HANDOFF; lead consolidates it.
+- Risks: inherited dev has unfinished rc.5 migration and changes to state/admission; scoped loader/client identities must align; OIDC requires npm UI authorization after package creation; upstream sync must never execute untrusted code with write credentials; provider/device evidence cannot be inferred from contracts.
+- Validation: final npm test with a temporary DSH_HOME (the baseline exposed one default-state test leak, fixed in task-2); node scripts/verify-release.mjs; node scripts/gen-channel-matrix.mjs --check; node --check src/index.mjs; npm pack --dry-run --json; independent read-only review; isolated rc3 host tests; registry artifact verification; GitHub Actions result checks. Scoped entry/compatibility focused checks: 20/20; client registration/exports checks after matching factory id to scoped package name: 12/12. Final suite count is pending; documentation counts are placeholders until measured.
+- Authorization: user explicitly approved fork pushes, dev/main updates, tags/releases/Actions, first public scoped npm publish (2026-11-17); npm web login completed by user. Never access credential files.
+- Adversarial review: pending independent review after worker implementation.
+- Handoff: pending. Canonical upstream remains THEWOLFWALKER/dsh-notifier; fork origin is LeonhardtHUST/dsh-notifier. No upstream writes authorized.
+- Neat-freak: canonical checklist read; final inventory/reconciliation pending.

@@ -55,7 +55,7 @@ same two-branch discipline:
 - `dev` — development branch. Active engineering happens here (features, `codex/*` topics); every change lands on `dev` first.
 - `main` — release branch. Only reviewed, published versions live here; tagged at each release; npm publishes from this branch's tree.
 
-Never develop on `main`. The npm payload is governed independently by `package.json.files` — agent/tool directories (`.agents/`, `.claude/`, `.codex/`, `.opencode/`) and contributor-only files (`HANDOFF.md`, `ADAPTER.md`, `docs/FORK_RELEASE.md`) never enter the npm archive.
+Never develop on `main`. The npm payload is governed independently by `package.json.files` — agent/tool directories (`.agents/`, `.claude/`, `.codex/`, `.opencode/`), contributor-only files (`HANDOFF.md`, `ADAPTER.md`), automation scripts/tests and `test/host/` stay out of the archive. `docs/FORK_RELEASE.md` is explicitly included as the fork publishing and synchronization runbook.
 
 Recommended publish procedure (fork):
 

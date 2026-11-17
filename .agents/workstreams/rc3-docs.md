@@ -93,9 +93,15 @@ Scope from task-5: root markdown, `docs/*.md` (25 files), `docs/memory/*.md` (4 
 
 ## Handoff
 
-Docs are committed as `ca37a0d` on `codex/rc3-scoped-release` (20 files: `ADAPTER.md`,
+Docs are committed as `7ea53d7` on `codex/rc3-scoped-release` (20 files: `ADAPTER.md`,
 `PLUGINS.md`, `PLUGINS.en.md`, the 14 edited `docs/*.md` files listed above, the two
 `examples/consumer-demo` files, and this workstream). No push was performed. The lead's
 remaining docs pass has to reconcile the out-of-scope files listed above (especially
 `docs/KNOWLEDGE_BASE.md`, `docs/memory/project-state.md`, `docs/memory/risks.md`,
 `HANDOFF.md`, `CHANGELOG.md`).
+
+## Final review revision (2026-11-17)
+
+- Commit-hash correction: this workstream previously named the pre-amend commit
+  `ca37a0d`; the actual committed docs revision is `7ea53d7` (the amend only
+  added this handoff record; the 20-file payload is unchanged).

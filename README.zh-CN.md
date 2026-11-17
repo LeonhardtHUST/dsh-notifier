@@ -1,3 +1,7 @@
+本维护分支以 `@leonhardthust/dsh-notifier` 发布，仓库为 [LeonhardtHUST/dsh-notifier](https://github.com/LeonhardtHUST/dsh-notifier)，上游原项目为 [THEWOLFWALKER/dsh-notifier](https://github.com/THEWOLFWALKER/dsh-notifier)。发布和上游同步见 [fork 发布指南](docs/FORK_RELEASE.md)。
+
+目标宿主为 DSH **0.2.2-rc.3**。本版包含 dev 分支的 fail-closed 状态格式迁移：升级前备份状态，未带版本标记的旧身份和凭据状态需要显式重新配置。同一 profile 不要同时安装 scoped fork 与原包，两者共用运行时服务、路由和插件行。
+
 <p align="center">
   <img src="docs/assets/readme-hero.png" alt="dsh-notifier — Agent ⇄ User, across every channel" width="100%">
 </p>
@@ -13,14 +17,14 @@
 [English](README.md) · [快速指南](docs/guide.md) · [排障](docs/TROUBLESHOOTING.md) · [兼容性](docs/compatibility-matrix.md)
 
 <p>
-  <a href="https://www.npmjs.com/package/dsh-notifier"><img src="https://img.shields.io/npm/v/dsh-notifier?style=flat-square&logo=npm&logoColor=white" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@leonhardthust/dsh-notifier"><img src="https://img.shields.io/npm/v/@leonhardthust/dsh-notifier?style=flat-square&logo=npm&logoColor=white" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT license"></a>
   <a href="https://dshfind.com/zh/plugins/THEWOLFWALKER/dsh-notifier?ref=badge"><img src="https://dshfind.com/api/badge/THEWOLFWALKER/dsh-notifier?lang=zh" alt="dshfind"></a>
 </p>
 
 </div>
 
-`dsh-notifier@0.13.1` · test/ 2011 个测试 · 2011 个自动化契约测试
+`@leonhardthust/dsh-notifier@0.14.0` · test/ 2082 个测试 · 2082 个自动化契约测试
 
 ## 它解决什么
 
@@ -54,14 +58,14 @@ dsh-notifier 是 DeepSeek Harness 的通知与远程操作层。最核心的使�
 
 把下面这句话发给**能操作当前机器终端**的 AI / Agent：
 
-> 请帮我在这台机器上安装或升级 **dsh-notifier 最新稳定版**。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH / Node 版本兼容，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。使用官方发布包完成安装，重启对应 DSH Host 一次，确认实际安装版本和 **「通知与控制」** 入口，最后把你执行过的命令、结果和仍存在的异常汇报给我。项目：`https://github.com/THEWOLFWALKER/dsh-notifier`
+> 请安装或升级 **@leonhardthust/dsh-notifier**。先识别当前 DSH profile 和安装来源，核对 DSH / Node 兼容性并备份配置。不要与原来的非 scoped 包并存，不改无关插件，不打印凭据。按本 fork 的旧状态迁移说明操作，重启对应 Host，确认安装版本和「通知与控制」入口，再报告结果。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
 
 更完整、适合直接交给 Codex / Claude Code / Cursor / 终端 Agent 的版本见：[AI 安装指南](docs/AI_INSTALL.md)。
 
 ### 自己安装
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile名>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 ```
 
 安装后重启 DSH 一次，让新的 Host 插件和 `client.js` 装载。然后：
@@ -175,7 +179,7 @@ Native UI、notifier runtime、高级管理台和测试尽量围绕同一份真�
 
 不要通过 Issue、QQ 或邮件发送 Bot Token、Webhook Secret、Admin Token、完整 `state.json` 或未脱敏的私聊内容。
 
-> **维护公告**：至 **2026-10-01** 前作者因考试，回复可能较慢。
+本 fork 的问题请提交到 [LeonhardtHUST/dsh-notifier issues](https://github.com/LeonhardtHUST/dsh-notifier/issues)。上述联系方式属于原项目作者。
 
 ## 开发信息
 

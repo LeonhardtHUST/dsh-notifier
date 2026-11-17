@@ -1,0 +1,4 @@
+# Repository-only automation tests import scripts that are intentionally not shipped.
+release-automation.test.mjs
+upstream-sync.test.mjs
+host/

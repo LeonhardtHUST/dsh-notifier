@@ -191,12 +191,56 @@ function readBundleRowName(pkgDir) {
 }
 
 /**
- * Copy a package directory into a profile's node_modules, skipping the obvious
- * heavyweight / irrelevant entries. We copy (not symlink) so the profile is
+ * Copy a package directory into a profile's node_modules, skipping heavyweight,
+ * dev-tool and sensitive entries. We copy (not symlink) so the profile is
  * self-contained and a later repo edit cannot bleed into a frozen home.
+ *
+ * The sensitive-path filter is name-only: it never reads a file to decide. It
+ * refuses credentials/state/secrets even when they are untracked, so a local
+ * `.env` or `state.json` can never enter a disposable profile payload.
  */
+const COPY_SKIP_SEGMENTS = new Set([
+  'node_modules',
+  '.git',
+  '.agents',
+  '.claude',
+  '.codex',
+  '.opencode',
+  'state',
+  '.ssh',
+  '.gnupg',
+])
+const COPY_SENSITIVE_NAMES = new Set([
+  '.npmrc',
+  '.yarnrc',
+  '.pypirc',
+  '.netrc',
+  '.credentials',
+  'credentials',
+  'credentials.json',
+  'state.json',
+  'bootstrap-paircode.txt',
+  'id_rsa',
+  'id_ed25519',
+])
+const COPY_SENSITIVE_SUFFIXES = ['.pem', '.key', '.p12', '.pfx']
+
+function isSensitivePackageName(name) {
+  const lower = name.toLowerCase()
+  if (lower === '.env' || lower.startsWith('.env.')) return true
+  if (COPY_SENSITIVE_NAMES.has(lower)) return true
+  return COPY_SENSITIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix))
+}
+
+function isBlockedPackagePath(rel) {
+  const segments = rel.split(sep).filter((segment) => segment !== '')
+  return segments.some((segment) => {
+    const lower = segment.toLowerCase()
+    return COPY_SKIP_SEGMENTS.has(lower) || isSensitivePackageName(lower)
+  })
+}
+
 function copyPackageInto(destDir, srcDir) {
-  const skip = new Set(['node_modules', '.git', '.agents', '.claude', '.codex', '.opencode'])
   guardWritePath(destDir)
   cpSync(srcDir, destDir, {
     recursive: true,
@@ -204,8 +248,7 @@ function copyPackageInto(destDir, srcDir) {
     filter: (src) => {
       const rel = relative(srcDir, src)
       if (rel === '') return true
-      const top = rel.split(sep)[0]
-      return !skip.has(top)
+      return !isBlockedPackagePath(rel)
     },
   })
 }

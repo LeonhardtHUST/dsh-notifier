@@ -1,5 +1,24 @@
 # dsh-notifier 当前交接快照
 
+> **scoped 0.14.0 / DSH 0.2.2-rc.3 维护线（2026-11-17）**：维护 fork 为 `LeonhardtHUST/dsh-notifier`，npm 包为 `@leonhardthust/dsh-notifier`，上游为 `THEWOLFWALKER/dsh-notifier`。task1/2/4/5 与发布自动化实现已完成并提交到当前 topic 分支，首次 npm 发布尚未执行。隔离临时 `DSH_HOME` 的完整 `npm test` 为 **2082 tests / 2082 pass / 0 fail / 0 skip**；release/host guard、channel matrix、syntax 和 npm payload guard 已通过。DSH `0.2.2-rc.3` disposable web/headless smoke 通过，真实 provider/device 与浏览器渲染仍未声明。
+
+更新时间：2026-11-17。当前工作分支 `codex/rc3-scoped-release` 从 `origin/dev` 开出，尚未 push。用户已授权 push fork、更新 `dev`/`main`、创建 tag/Release、配置 Actions，并在 npm 登录后首次公开发布 scoped 包；不向上游写入。发布顺序：review 当前 diff → 更新测试数/文档 guard → 提交 lead metadata → 推送 topic/dev → fast-forward main → 首次 `npm publish --access public` → 用 `npm trust github ... --allow-publish` 配置 Trusted Publisher → 后续以新 patch 版本验证 OIDC，再设置 `NPM_AUTO_PUBLISH=true`。
+
+## 当前实现与边界
+
+- outbound source 保留 JSON clone + deep freeze；qq-bot、wecom-app、desktop、serverchan 的 send-time 状态在 adapter-private WeakMap。#45/#46 的冻结配置崩溃已由 cold/hot、retry、token、probe、warning 和 isolation tests 覆盖。
+- DSH host 声明精确到 `0.2.2-rc.3`，`@deepseek-ai/dsh-session` 为 optional exact peer，Cordis 对齐 `~4.1.0`；静态 inject 不依赖 `connection`，headless 不再 PENDING。host lifecycle listener 保持同步副作用并返回可 `.catch` 的 Promise。
+- scoped client factory id 与完整 package name 一致，loader patch 行使用 `@leonhardthust/dsh-notifier`，runtime plugin row/service/RPC/state namespace 仍保持 `dsh-notifier`。原 unscoped 包与维护 fork不能同 profile 共存。
+- state schema/namespace 迁移是 fail-closed：升级前备份，旧或未知状态不作为身份/凭据权威，首次写会保存 `state.json.pre-v0.14-legacy.<timestamp>`；重新配置渠道凭据并重新 `/pair`，禁止手改 `__schema`。
+- upstream sync 只从上游 `dev` 提议到 fork `dev` 的 PR，保护 fork workflows/scripts/package identity，使用显式 read-only CI dispatch、force-with-lease、超时和去重 issue；不运行合并后的上游源码于写权限 job，不自动合并/publish。
+
+## 仍然开放
+
+- QQ #26 的真实客户端按钮渲染、各 provider payload/ACK/重连/媒体限制、桌面 BurntToast、浏览器 Native UI render 和 registry disposable-profile 安装仍待外部证据；contract/host smoke 不升级为真机支持。
+- npm Trusted Publisher 必须在包首次存在后设置，字段见 `docs/FORK_RELEASE.md`；首次 OIDC 应使用新版本（例如 `0.14.1`），同版本重跑不能证明 OIDC。
+
+## 历史发布记录
+
 > **v0.13.1 发布收口（2026-09-26）**：`dev` 已完成管理台 i18n、公开能力证据边界、npm 包文档白名单与高风险复核；本版本按正式流程推进 `dev → main`、tag、GitHub Release 与 npm 发布。全量 `npm test` 为 **2011 tests / 2011 pass / 0 fail / 0 skip**，`npm run verify:release` 通过。真实 DSH 真机、provider 账号与真实投递回执未在本次收口中新增验证，继续保持 open，见 `docs/memory/risks.md`。
 
 更新时间：2026-09-26。当前发行线 **v0.13.1**：canonical outbound config、Native/Admin 服务收敛、provider handshake/deadline、durable cursor、epoch/revision 生命周期、structured RPC errors、ErrorBoundary、管理台双语资源、证据边界与 npm payload 白名单均已落地并通过契约回归。npm、`main`、tag 与 GitHub Release 按本次 release closeout 收口，外部 provider/真机证据仍以 `docs/memory/risks.md` 为准。
@@ -8,7 +27,7 @@
 
 上一发布线：**R5（v0.9.5，已收口 1531 tests）**：按 2026-08 审查线 80 项问题清单累计完成 70 项修复（另 G-19 取证登记不改码；9 项登记不修：G-35/36/37 结构债、S-01/03/08/09/10/15，见 TECHNICAL_DEBT/risks）。R1（v0.9.1，21 项）：W1 钉钉 Stream 协议 G-01/02/10/23/24/42、W2 码点分段 G-03/22/40、W3 命令矩阵 G-04/06/25/33/43/52/65、W4 管理台审计 G-05/41、W5 合并窗路由键 G-51/48/49。R2（v0.9.2，12 项）：W6 出站投递语义 G-50/08/09/56、W7 错误可见性 G-53/54、W8 token 与网关生命周期 G-11/55/29/07/21/12。R3（v0.9.3，4 项）：W9 安全中危 S-02/S-05/S-06/S-07。R4（v0.9.4，27 项）：W10 配置校验与渠道枚举收敛（G-13/S-12/G-61/62/63/64/G-32/G-38/G-39/G-45/G-28，提交 `5a06dac`）；W11 入站生命周期（G-15 bus priority + G-46 合成键 60s 短窗，提交 `6036706`；G-16 重启失效告知/G-17 飞书 TTL/G-18 去重键分离/G-26 非文本静默/G-27 单调 seq/G-30/31 过期码不计锁出/G-34 文本线 5min 抑制，提交 `01c20ec`；G-19 证据不足仅登记 `docs/memory/risks.md` 不改码）；W12 存储与状态（G-20 铸造原子写/G-47 覆盖行 30d/G-44 坏键清洗/G-14 出站视图热投递冷/S-14 resolve 前态/S-04 权限自检，提交 `28cbd75`）。R5（v0.9.5，W13）：G-57 脚本重命名 channel-selfcheck、G-58 mock 保真（qq error/半帧/超时 + public 超时 + 分层原则）、G-59 三新套件（health/escalation/pairing）、G-60 命令清单 11 条 + accountId 排障、S-11 hook-server 排除出包、S-13 optionalDeps 精确锁定。全部为 mock/contract 证据，协议类修复未经真机验证（缺口记 `docs/memory/risks.md`）。
 
-| 测试 | `npm test` **2011 tests**（2011 pass，0 fail，0 skip；默认 hermetic network boundary） |
+| 测试 | `npm test` **2082 tests**（2082 pass，0 fail，0 skip；隔离临时 `DSH_HOME`） |
 
 ## 下一位开发者从这里开始
 

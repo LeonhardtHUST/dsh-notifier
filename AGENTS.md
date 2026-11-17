@@ -10,7 +10,7 @@
 - Tracked `.agents/` workstreams and `docs/memory/` are the only collaboration-state authority; chat messages are not durable project state. Runtime truth remains `src/` and `test/`.
 - The npm package archive is an output. It never overrides the engineering tree.
 - Every task completion or milestone handoff must read and execute the project-local `.agents/skills/neat-freak/SKILL.md` checklist before the final response. Its canonical copy lives under `.agents/skills/neat-freak/`; tool-specific skill directories contain pointers only.
-- Single-repo two-branch model: `https://github.com/THEWOLFWALKER/dsh-notifier` is the canonical repository. Develop on `dev`, release on `main`; there is no separate private dev or public mirror repository to juggle.
+- Maintained fork: `https://github.com/LeonhardtHUST/dsh-notifier`, published as `@leonhardthust/dsh-notifier`. Upstream remains `https://github.com/THEWOLFWALKER/dsh-notifier`; preserve attribution and do not push upstream without authorization. Develop on `dev`, release on `main`; upstream synchronization lands through reviewed PRs to `dev` (see `docs/FORK_RELEASE.md`).
 
 ## Hard Boundaries
 

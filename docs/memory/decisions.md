@@ -18,7 +18,7 @@ Tracked `.agents/` workstreams and `docs/memory/` are the authority for collabor
 
 ## Repository Roles And Relay Cadence
 
-The single repository `THEWOLFWALKER/dsh-notifier` hosts two branches with distinct jobs: `dev` for development and `main` for releases. Every agent completion records identity, scope, files, tests, review, risks, next step, and commit in its workstream, then refreshes the consolidated current handoff snapshot in `HANDOFF.md`; `docs/memory/` carries only durable facts and decisions.
+The maintained fork `LeonhardtHUST/dsh-notifier` publishes `@leonhardthust/dsh-notifier`; `THEWOLFWALKER/dsh-notifier` remains the upstream source. Fork development lands on `dev`; reviewed releases land on `main`. Upstream synchronization prepares PRs to `dev` and must preserve fork package identity and release policy. Agents record their own scope, tests and commit in tracked workstreams; the lead consolidates `HANDOFF.md`. See `docs/FORK_RELEASE.md`.
 
 ## Security Defaults
 
@@ -27,6 +27,10 @@ Remote approval and remote questions fail closed. Timeout, malformed input, inva
 ## Outbound State Is Product Runtime State (v0.12)
 
 Editable outbound configuration is product/runtime state, not Standalone Admin state. The canonical store key is `channel:<type>:outbound` and is read regardless of `admin.enabled`; `admin:channel:<type>:outbound` and the legacy `<type>:account` are compatibility-only and must never be revived for a user who disabled Admin. One `OutboundSource` is the live runtime authority: every consumer takes a per-operation snapshot, outbound save is a hot synchronous swap (no notifier rebuild, no restart), and `resolved.channels` is a startup snapshot only. The DSH Native surface is the primary control surface; the Standalone console is the advanced/recovery entry and exchanges a one-time launch ticket instead of ever receiving the long-lived Admin bearer.
+
+## Immutable Adapter Configuration
+
+`resolve()` outputs JSON-serializable configuration snapshots. `OutboundSource` clones and deep-freezes them; `send()` must not mutate them. Token managers, rate gates, sequence counters and probe promises belong in adapter-private WeakMaps keyed by the live config object. A hot replacement gets fresh runtime state; an in-flight send retains its original snapshot. Sources: `src/runtime/outbound-source.mjs`, `src/adapters/qq-bot.mjs`, `test/outbound-frozen-config.test.mjs`.
 
 ## User-Centered Product Direction
 

@@ -1,4 +1,6 @@
-*我们正在进行大规模重构 近期更新可能推迟*
+This maintained fork publishes as `@leonhardthust/dsh-notifier` from [LeonhardtHUST/dsh-notifier](https://github.com/LeonhardtHUST/dsh-notifier). The original project is [THEWOLFWALKER/dsh-notifier](https://github.com/THEWOLFWALKER/dsh-notifier). See the [fork release guide](docs/FORK_RELEASE.md) for publishing and upstream synchronization.
+
+Target host: DSH **0.2.2-rc.3**. This release includes the development branch's fail-closed state schema migration: back up your state before upgrading; legacy unversioned identity and credential state requires explicit reconfiguration. Do not install the scoped fork alongside the original package in one profile: they share the runtime service, route, and plugin row.
 
 
 <p align="center">
@@ -16,14 +18,14 @@ Bring DeepSeek Harness to your phone: notifications, approvals, questions, remot
 [简体中文](README.zh-CN.md) · [Quick Guide](docs/guide.en.md) · [Troubleshooting](docs/TROUBLESHOOTING.en.md) · [Compatibility](docs/compatibility-matrix.md)
 
 <p>
-  <a href="https://www.npmjs.com/package/dsh-notifier"><img src="https://img.shields.io/npm/v/dsh-notifier?style=flat-square&logo=npm&logoColor=white" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@leonhardthust/dsh-notifier"><img src="https://img.shields.io/npm/v/@leonhardthust/dsh-notifier?style=flat-square&logo=npm&logoColor=white" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT license"></a>
   <a href="https://dshfind.com/en/plugins/THEWOLFWALKER/dsh-notifier?ref=badge"><img src="https://dshfind.com/api/badge/THEWOLFWALKER/dsh-notifier?lang=en" alt="dshfind"></a>
 </p>
 
 </div>
 
-`dsh-notifier@0.13.1` · test/ 2011 tests · 2011 automated contract tests
+`@leonhardthust/dsh-notifier@0.14.0` · test/ 2082 tests · 2082 automated contract tests
 
 ## What it does
 
@@ -57,14 +59,14 @@ dsh-notifier is the notification and remote-operations layer for DeepSeek Harnes
 
 Copy this sentence to an AI/agent that can operate your terminal:
 
-> Install or upgrade the latest stable **dsh-notifier** on this machine. First detect the active DSH profile and current install source, verify the installed DSH/Node versions are compatible, and preserve the existing configuration. Do not modify unrelated plugins or print any token/secret. Install from the official package, restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry, then report the commands you ran, the result, and any remaining problem. Project: `https://github.com/THEWOLFWALKER/dsh-notifier`
+> Install or upgrade **@leonhardthust/dsh-notifier** on this machine. Identify the active DSH profile and installation source, check DSH/Node compatibility, and back up the existing configuration. Do not install it alongside the original unscoped package, change unrelated plugins, or print secrets. Follow this fork's state migration guidance, restart the relevant Host, verify the installed package version and Notify & Control entry, and report the result. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
 
 The full AI installation procedure is in [AI_INSTALL.en.md](docs/AI_INSTALL.en.md).
 
 ### Install manually
 
 ```bash
-dsh plugin add dsh-notifier@latest --profile <profile-name>
+dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
 ```
 
 Restart DSH once so the new Host plugin and `client.js` are loaded. Then:
@@ -219,7 +221,7 @@ For reproducible bugs, prefer **GitHub Issues after AI-assisted diagnosis**.
 
 Do not send bot tokens, webhook secrets, admin tokens, full `state.json`, or unredacted private chat content through an issue, QQ, or email.
 
-> Maintenance note: replies may be slower until **2026-10-01** because the maintainer is taking exams.
+For this fork, report problems at [LeonhardtHUST/dsh-notifier issues](https://github.com/LeonhardtHUST/dsh-notifier/issues). The contact details above belong to the original project.
 
 ## Development
 

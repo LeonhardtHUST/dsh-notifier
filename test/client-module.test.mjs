@@ -53,7 +53,9 @@ function loadModule({ rpcCall } = {}) {
     setInterval() { return 1 }, clearInterval() {}, setTimeout, clearTimeout, AbortController, console,
   }
   vm.runInNewContext(source, sandbox, { filename: 'client.js' })
-  assert.equal(registration.id, 'dsh-notifier')
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(registration.id, packageJson.name, 'host client graph keys factories by the npm package name')
+  assert.equal(registration.id, '@leonhardthust/dsh-notifier')
   const mod = registration.factory(name => {
     if (name === 'react') return fakeReact()
     throw new Error(`unexpected require ${name}`)

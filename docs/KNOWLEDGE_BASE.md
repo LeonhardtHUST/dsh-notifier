@@ -2,17 +2,17 @@
 
 这是人类和 agent 的导航页。每个问题尽量只指向一个权威来源；运行时真相仍是 `src/` 与 `test/`，版本真相是 `package.json`。
 
-> 当前工作线：`v0.13.1` 已完成正式发布（tag、GitHub Release、npm latest）；`dev` 与 `main` 的发布内容已对齐，后续仅保留文档跟进和真实 provider/真机证据缺口。
+> 当前工作线：`@leonhardthust/dsh-notifier@0.14.0` 正在准备首次 scoped npm 发布；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 发布链已配置。目标宿主为 DSH `0.2.2-rc.3`，真实 provider/真机证据仍单独记录。
 
 ## 当前基线
 
-- 当前发布线：**v0.13.1**（包版本字段 `0.13.1`，2011 tests 全绿，tag `v0.13.1`、GitHub Release 与 npm latest 已完成；release commit `9e0d3b6`，main 文档跟进 `c87f788`，dev 当前 `c6444a5`）：canonical 出站键 `channel:<type>:outbound` 始终读取（Admin 关闭不得复活旧 overlay）、`OutboundSource` 为唯一运行时权威、DSH Connection RPC `/dsh-notifier`、一次性 Advanced Console 启动票据、Health/Activity/Channels/Tasks/Questions 投影、Native 前端（Host React，无 iframe/esbuild/react-dom）。上一发布线 **v0.13.0**（1985 tests；tag `v0.13.0`）。
-- 当前测试：`2011`（2011 pass，v0.13.1 release baseline）。v0.13.0 发布基线为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`、v0.10.0 为 `1605`、v0.9.7 为 `1548`、v0.9.6 为 `1544`、v0.9.5 为 `1531`、v0.9.0 为 `1352`、npm `0.8.6` 契约为 `909`；按版本区分。
-- 单仓库双分支模型：`THEWOLFWALKER/dsh-notifier` 是唯一仓库，`dev` 分支做开发、`main` 分支做发布（发布版本 + 标签 + npm）。
+- 当前发布线：**0.14.0**（包版本字段 `0.14.0`，scoped 包 `@leonhardthust/dsh-notifier`；首次 npm 发布待本次验证后执行）：OutboundSource 配置保持深冻结，适配器运行态进入私有 WeakMap；DSH `0.2.2-rc.3` 兼容声明、headless/web 隔离 smoke 和生命周期 Promise 兼容已完成。历史正式发布线 **v0.13.1** 仍归属于上游 unscoped 包。
+- 当前测试：`2082`（2082 pass，0 fail，0 skip；隔离临时 `DSH_HOME`）。历史 v0.13.1 为 `2011`、v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`、v0.10.0 为 `1605`、v0.9.7 为 `1548`、v0.9.6 为 `1544`、v0.9.5 为 `1531`、v0.9.0 为 `1352`、npm `0.8.6` 契约为 `909`。
+- 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`dev` 做开发、`main` 做发布；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `dev` 的审查 PR。
 - 生态收录：v0.13.1 已发布；Awesome DSH / dshfind 的公开描述刷新是发布后的外部同步步骤，不影响仓内版本事实。
 - Node.js ESM、Node `>=22`、无生产依赖、无构建步骤；28 个出站渠道，Telegram/Feishu/QQ Bot/WxPusher/WeChat iLink/DingTalk 六个入站控制通道。
 - v0.12 起 DSH Native「通知与控制」是日常主控制面（Sidebar/Main + Plugins 入口）；Standalone Web 管理台只监听 `127.0.0.1`，降级为 Advanced / Recovery；YAML / CLI 是高级、自动化与 headless 入口。出站保存 Hot Apply，不重启。
-- Native 与 Web/admin 的问题结算均复用 Control Core；desktop `ask_user` 没有安全宿主接口，不能声称桌面结算或双端共享。新宿主目标为 DSH `0.2.1-rc.5`（`engines.dsh`，旧 `0.1.7-*` 不再支持）；provider/device 级验证仍按 `docs/memory/risks.md` 单独记录。
+- Native 与 Web/admin 的问题结算均复用 Control Core；desktop `ask_user` 没有安全宿主接口，不能声称桌面结算或双端共享。当前目标宿主为 DSH `0.2.2-rc.3`（精确 `engines.dsh`，旧 `0.2.1-*`/`0.1.7-*` 不再声明）；provider/device 级验证仍按 `docs/memory/risks.md` 单独记录。
 
 ## 阅读顺序
 
