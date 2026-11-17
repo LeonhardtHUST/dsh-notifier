@@ -1,0 +1,175 @@
+name: Release
+
+# Fork-only scoped release for @leonhardthust/dsh-notifier.
+#
+# Two-phase enablement:
+#   1. The first scoped version is published manually by the maintainer. npm
+#      requires the package to exist before a trusted publisher can be added.
+#   2. After the trusted publisher completes its first OIDC publish, set the
+#      repository variable NPM_AUTO_PUBLISH=true to arm automatic releases.
+#
+# The publish job is tokenless: OIDC trusted publishing supplies short-lived
+# credentials, and npm generates provenance automatically. No NPM_TOKEN or
+# NODE_AUTH_TOKEN may be present (the guard fails closed if they are).
+
+on:
+  push:
+    branches: [main]
+    paths: ['package.json']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the current main version if it is not on the registry yet (tokenless OIDC).'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release candidate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Keep any host-profile side effects out of the runner's default home.
+      DSH_HOME: ${{ runner.temp }}/dsh-home
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      action: ${{ steps.plan.outputs.action }}
+      should_release: ${{ steps.plan.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Guard package identity and toolchain
+        run: node scripts/release-automation.mjs guard
+      - name: Run full test suite
+        run: npm test
+      - name: Release guard
+        run: node scripts/verify-release.mjs
+      - name: Channel matrix guard
+        run: node scripts/gen-channel-matrix.mjs --check
+      - name: Syntax guard
+        run: node --check src/index.mjs
+      - name: Build npm payload manifest
+        run: npm pack --dry-run --json > "$RUNNER_TEMP/pack.json"
+      - name: Validate npm payload boundary
+        run: node scripts/release-automation.mjs pack-check "$RUNNER_TEMP/pack.json"
+      - id: release
+        name: Read release version
+        run: node scripts/release-automation.mjs version
+      - id: registry
+        name: Check registry for a duplicate version
+        run: node scripts/release-automation.mjs registry-check
+      - id: tag
+        name: Read existing release tag
+        shell: bash
+        env:
+          TAG_NAME: v${{ steps.release.outputs.version }}
+        run: |
+          set -eu
+          commit=""
+          ancestor="false"
+          if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            commit="$(git rev-list -n 1 "$TAG_NAME")"
+            if git merge-base --is-ancestor "$TAG_NAME" "$GITHUB_SHA"; then
+              ancestor="true"
+            fi
+          fi
+          printf 'commit=%s\nancestor=%s\n' "$commit" "$ancestor" >> "$GITHUB_OUTPUT"
+      - id: plan
+        name: Plan release action
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          VERSION_EXISTS: ${{ steps.registry.outputs.exists }}
+          TAG_COMMIT: ${{ steps.tag.outputs.commit }}
+          TAG_IS_ANCESTOR: ${{ steps.tag.outputs.ancestor }}
+          HEAD_COMMIT: ${{ github.sha }}
+        run: node scripts/release-automation.mjs plan
+
+  publish:
+    name: Publish to npm (OIDC)
+    needs: verify
+    # Automatic publishing stays disarmed until NPM_AUTO_PUBLISH is set after the
+    # first manual publish + trusted-publisher validation. Manual recovery is an
+    # explicit dispatch with publish=true and still passes the environment gate.
+    if: needs.verify.outputs.should_release == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && vars.NPM_AUTO_PUBLISH == 'true'))
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Guard package identity and toolchain
+        run: node scripts/release-automation.mjs guard
+      - id: registry
+        name: Re-check registry after environment approval
+        run: node scripts/release-automation.mjs registry-check
+      - id: tag
+        name: Read existing release tag
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.verify.outputs.tag_name }}
+        run: |
+          set -eu
+          commit=""
+          ancestor="false"
+          if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            commit="$(git rev-list -n 1 "$TAG_NAME")"
+            if git merge-base --is-ancestor "$TAG_NAME" "$GITHUB_SHA"; then
+              ancestor="true"
+            fi
+          fi
+          printf 'commit=%s\nancestor=%s\n' "$commit" "$ancestor" >> "$GITHUB_OUTPUT"
+      - id: plan
+        name: Re-plan release from current registry state
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          VERSION_EXISTS: ${{ steps.registry.outputs.exists }}
+          TAG_COMMIT: ${{ steps.tag.outputs.commit }}
+          TAG_IS_ANCESTOR: ${{ steps.tag.outputs.ancestor }}
+          HEAD_COMMIT: ${{ github.sha }}
+        run: node scripts/release-automation.mjs plan
+      - name: Create release tag if missing
+        if: steps.plan.outputs.action != 'already-released'
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.verify.outputs.tag_name }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            commit="$(git rev-list -n 1 "$TAG_NAME")"
+            if [ "$commit" != "$GITHUB_SHA" ]; then
+              echo "tag $TAG_NAME points at $commit, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+          else
+            git tag -a "$TAG_NAME" -m "dsh-notifier $RELEASE_VERSION"
+            git push origin "refs/tags/$TAG_NAME"
+          fi
+      - name: Publish with trusted publishing
+        if: steps.plan.outputs.action == 'publish'
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+        run: npm publish --access public --ignore-scripts
+      - name: Verify the published version
+        run: node scripts/release-automation.mjs registry-check --require-exists

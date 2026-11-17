@@ -1,0 +1,84 @@
+name: Upstream sync
+
+# Daily check of THEWOLFWALKER/dsh-notifier dev/main. The merge is only ever
+# proposed as a pull request against the fork's dev branch; it never publishes,
+# never touches main, and never runs upstream code inside a write-scoped job.
+#
+# Repository setting prerequisite: Settings -> Actions -> General -> Workflow
+# permissions -> enable "Allow GitHub Actions to create and approve pull
+# requests". Without it the GITHUB_TOKEN cannot open the sync PR. Do not raise
+# the default workflow permission to read-write globally; the jobs below request
+# only the scopes they need.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Propose upstream sync
+    if: github.repository == 'LeonhardtHUST/dsh-notifier' && github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FORK_REPOSITORY: ${{ github.repository }}
+      UPSTREAM_REPOSITORY: THEWOLFWALKER/dsh-notifier
+      SYNC_TARGET_BRANCH: dev
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+      - name: Merge upstream into the automation branch
+        # Only git plumbing and the GitHub API run here. The merged tree is first
+        # executed by the pull request's read-only CI.
+        run: node scripts/upstream-sync.mjs sync
+
+  alert:
+    name: Alert on sync PR CI failure
+    if: |
+      github.repository == 'LeonhardtHUST/dsh-notifier' &&
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.path == '.github/workflows/ci.yml' &&
+      (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'automation/upstream-sync' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FORK_REPOSITORY: ${{ github.repository }}
+      UPSTREAM_REPOSITORY: THEWOLFWALKER/dsh-notifier
+      SYNC_TARGET_BRANCH: dev
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Upsert the upstream sync alert issue
+        # API-only: no pull-request head checkout. The issue is deduplicated by
+        # title and updated/reopened in place, mentioning @LeonhardtHUST once.
+        run: node scripts/upstream-sync.mjs notify-ci-failure

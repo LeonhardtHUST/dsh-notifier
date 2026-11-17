@@ -4,10 +4,16 @@ on:
   push:
     branches: [main, master, dev]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: dsh-notifier-ci-${{ github.ref }}
   cancel-in-progress: true
+
+# Tests execute repository code (including upstream-merged code on pull
+# requests). Keep the default token read-only; no job needs write access.
+permissions:
+  contents: read
 
 jobs:
   test:
