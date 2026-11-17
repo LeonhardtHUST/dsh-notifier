@@ -102,7 +102,7 @@ function makeFake(channel, { targets = [], failCards = false, failEdit = false, 
 }
 
 /** 组装 rig：真实 bus/vault/store + 假 ctx/notifier + 传入的交互通道列表。 */
-function makeRig({ interactive = [], telegram = null, approvalConfig = {}, router = null, channels = undefined, identity = null, control = null } = {}) {
+function makeRig({ interactive = [], telegram = null, approvalConfig = {}, router = null, channels = undefined, identity = null, control = null, onBroadcast = null } = {}) {
   const store = createStore(tempPath())
   const vault = createTokenVault({ secret: 'multi-secret' })
   const bus = createInboundBus({ allowUsers: ['u1', 'u2', 'u3', '10001'], store, vault })
@@ -118,7 +118,12 @@ function makeRig({ interactive = [], telegram = null, approvalConfig = {}, route
   }
   const broadcasts = []
   const notifier = {
-    notifyAll: async (msg) => { broadcasts.push(msg); return { ok: true, delivered: [], skipped: [], failed: [] } },
+    notifyAll: async (msg) => {
+      broadcasts.push(msg)
+      // 观察钩子只做测试同步（事件 latch），异常绝不影响通知主链路
+      try { onBroadcast?.(msg) } catch { /* observer failure is test-only */ }
+      return { ok: true, delivered: [], skipped: [], failed: [] }
+    },
     ...(channels !== undefined ? { channels } : {}),
   }
   const dispose = registerApprovalHandler({
@@ -131,6 +136,24 @@ function makeRig({ interactive = [], telegram = null, approvalConfig = {}, route
   const handle = (request = { toolName: 'bash', callId: 'call-1' }) =>
     handlers['approval/request'](request, () => 'desktop')
   return { store, vault, bus, handlers, broadcasts, dispose, handle }
+}
+
+/**
+ * 事件 latch 的失败护栏：只防回归时测试无限挂起，正常路径不等这个计时器。
+ * 不用它做时序同步（固定 sleep 的老问题正是猜 wall-clock），只把「事件永远不来」变成可读失败。
+ */
+async function withDeadline(promise, timeoutMs, what) {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${what}未在 ${timeoutMs}ms 内发生`)), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 test('Control Core：QQ 按钮回调统一裁决；错误 account/chat、群聊与重放 fail-closed，钉钉文本 fallback 仍走同一入口', async () => {
@@ -398,19 +421,32 @@ test('router 多通道：intended 兜底正路径——分流渠道卡片发送�
   // CRACK-003：intended 兜底命中他人卡片——回复者需意图渠道 owner 绑定才可代决（放行矩阵）
   const identity = createIdentity({ store: createStore(tempPath()) })
   identity.addBinding({ channel: 'feishu', userId: 'u1' }) // 首条绑定 = owner
-  const rig = makeRig({ interactive: [feishu, telegram], router, identity })
-  const outcome = rig.handle({ toolName: 'bash', callId: 'call-i', agent: { id: 'agent-1' } })
-  await new Promise((resolve) => setTimeout(resolve, 30))
-  // 分流只到 feishu：意图渠道卡片发送失败，非意图渠道（telegram）不发卡
-  assert.equal(feishu.state.cards.length, 0)
-  assert.equal(telegram.state.cards.length, 0)
-  // 广播照发（全失败话术），教了「回复 1 批准 / 2 拒绝」
-  assert.match(rig.broadcasts[0].content, /回复 1 批准 \/ 2 拒绝/)
-  // 意图渠道上白名单用户回复 1 → intended 兜底命中（堵住「卡片失败 + 广播教回复」死路）
-  const accepted = rig.bus.accept({ channel: 'feishu', accountId: 'FS_APP', chatType: 'private', userId: 'u1', chatId: 'oc_chat001', messageId: 'msg:i:1', text: '1' })
-  assert.equal(accepted.ok, true)
-  assert.equal(await outcome, 'allowed-once')
-  rig.dispose()
+  // 原用例固定等 30ms：并发负载下 400ms 审批超时可能先到，编号回复仍被消费但结果回落
+  // desktop（flaky）。改为等通知事件 latch（广播入账即推送完成、waiter 已预注册），
+  // 并把超时抬到 5s，让调度抖动只影响延迟而不参与裁决窗口。
+  const { promise: initialBroadcast, resolve: resolveInitialBroadcast } = Promise.withResolvers()
+  const rig = makeRig({
+    interactive: [feishu, telegram],
+    router,
+    identity,
+    approvalConfig: { timeoutMs: 5000 },
+    onBroadcast: (msg) => resolveInitialBroadcast(msg),
+  })
+  try {
+    const outcome = rig.handle({ toolName: 'bash', callId: 'call-i', agent: { id: 'agent-1' } })
+    const broadcast = await withDeadline(initialBroadcast, 4000, '初始审批广播')
+    // 分流只到 feishu：意图渠道卡片发送失败，非意图渠道（telegram）不发卡
+    assert.equal(feishu.state.cards.length, 0)
+    assert.equal(telegram.state.cards.length, 0)
+    // 广播照发（全失败话术），教了「回复 1 批准 / 2 拒绝」
+    assert.match(broadcast.content, /回复 1 批准 \/ 2 拒绝/)
+    // 意图渠道上白名单用户回复 1 → intended 兜底命中（堵住「卡片失败 + 广播教回复」死路）
+    const accepted = rig.bus.accept({ channel: 'feishu', accountId: 'FS_APP', chatType: 'private', userId: 'u1', chatId: 'oc_chat001', messageId: 'msg:i:1', text: '1' })
+    assert.equal(accepted.ok, true)
+    assert.equal(await outcome, 'allowed-once')
+  } finally {
+    rig.dispose()
+  }
 })
 
 test('router 多通道：intended 收紧对照——非意图渠道的裸 1 仍拒绝（跨渠道不兜底）', async () => {

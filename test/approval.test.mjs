@@ -21,6 +21,24 @@ function tempPath() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * 事件 latch 的失败护栏：只防回归时测试无限挂起，正常路径不等这个计时器。
+ * 不用它做时序同步（那是固定 sleep 的老问题），只把「事件永远不来」变成可读失败。
+ */
+async function withDeadline(promise, timeoutMs, what) {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${what}未在 ${timeoutMs}ms 内发生`)), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ---------------------------------------------------------------- escalation
 
 test('escalation：stages 按累计延迟依次触发，stageOf 递增', async () => {
@@ -95,8 +113,10 @@ test('escalation：stages 为空时 start 是 no-op；dispose 清一切', async 
  * @param {((chatId: string, text: string) => boolean|Promise<boolean>) | null} [options.sendText]
  *   给 telegram 补 sendText 桩（norm 化后回执可用）。缺省不实现 → norm 化 sendText
  *   对缺方法返回 false（回执静默失败，不升级抛错）。
+ * @param {((msg: object) => void) | null} [options.onBroadcast]
+ *   通知入账后的测试观察钩子（事件 latch 用：避免用固定 sleep 猜推送/升级的时序）。
  */
-function makeRig({ approvalConfig = {}, chatIds = ['100'], mode = 'answer', sendText = null, identity = null, logger = null } = {}) {
+function makeRig({ approvalConfig = {}, chatIds = ['100'], mode = 'answer', sendText = null, identity = null, logger = null, onBroadcast = null } = {}) {
   const store = createStore(tempPath())
   const vault = createTokenVault({ secret: 'test-secret' })
   // 白名单含 42（个人号）与 100（= 推送 chatId 对应的用户），供编号回复匹配测试
@@ -110,7 +130,12 @@ function makeRig({ approvalConfig = {}, chatIds = ['100'], mode = 'answer', send
   }
   const broadcasts = []
   const notifier = {
-    notifyAll: async (msg) => { broadcasts.push(msg); return { ok: true, delivered: [], skipped: [], failed: [] } },
+    notifyAll: async (msg) => {
+      broadcasts.push(msg)
+      // 观察钩子只做测试同步（latch resolve），异常绝不影响通知主链路
+      try { onBroadcast?.(msg) } catch { /* observer failure is test-only */ }
+      return { ok: true, delivered: [], skipped: [], failed: [] }
+    },
   }
   const cards = []
   const edits = []
@@ -538,23 +563,32 @@ test('router：E-2 未 settle 的正常 pending 编号回复仍走裁决（B1，
 })
 
 test('router：升级链在等待期触发再提醒，裁决后停止', async () => {
+  // 用通知事件 latch 替代固定 sleep：stage1 广播入账后立刻 resolve，测试在微任务里完成
+  // 裁决与 escalation.stop，先于 stage2 计时器回调——不依赖 wall-clock 窗口（CPU 饥饿时
+  // 20ms 与 400ms 两个 timer 可能同时到期，任何固定 sleep/poll 都可能排在两者之后误判）。
+  const { promise: firstEscalation, resolve: resolveFirstEscalation } = Promise.withResolvers()
   const rig = makeRig({
     approvalConfig: {
       timeoutMs: 5000,
-      // 窗口拉宽（50→400ms）：原 50/80ms 双阶段夹 70ms 检查点，CI 负载下 sleep 越窗
-      // 会把「未触发」误报成已触发（flaky 根因）；语义不变——第一阶段已过、第二阶段未到
-      escalation: { enabled: true, stages: [{ afterMs: 50, note: '催一催' }, { afterMs: 400, note: '再催' }] },
+      escalation: { enabled: true, stages: [{ afterMs: 20, note: '催一催' }, { afterMs: 400, note: '再催' }] },
     },
+    onBroadcast: (msg) => { if (/仍在等待批准/.test(String(msg.title))) resolveFirstEscalation(msg) },
   })
-  const pending = rig.handle({ toolName: 'rm', callId: 'c1', reason: 'x' })
-  await sleep(150) // 宽窗中点：第一阶段必触发，第二阶段必未触发
-  const card = rig.cards[0]
-  rig.bus.decide({ approvalKey: card.approvalKey, decision: 'allowed-once', token: card.token, via: 'telegram', userId: '42', chatId: '100' })
-  await pending
-  const escalationBroadcasts = rig.broadcasts.filter((msg) => /仍在等待批准/.test(msg.title))
-  assert.equal(escalationBroadcasts.length, 1) // 只触发了第一阶段就被裁决叫停
-  assert.match(escalationBroadcasts[0].content, /催一催/)
-  rig.dispose()
+  try {
+    const pending = rig.handle({ toolName: 'rm', callId: 'c1', reason: 'x' })
+    const first = await withDeadline(firstEscalation, 4000, '首个升级广播')
+    assert.match(first.content, /催一催/)
+    const card = rig.cards[0]
+    rig.bus.decide({ approvalKey: card.approvalKey, decision: 'allowed-once', token: card.token, via: 'telegram', userId: '42', chatId: '100' })
+    assert.equal(await pending, 'allowed-once')
+    const escalations = () => rig.broadcasts.filter((msg) => /仍在等待批准/.test(msg.title))
+    assert.equal(escalations().length, 1) // 只触发了第一阶段就被裁决叫停（微任务先于 stage2 timer）
+    // 负窗：即使后续调度被拖慢，stage2（420ms 累计）也已被 stop 清除，不得再出声
+    await sleep(500)
+    assert.equal(escalations().length, 1, '裁决后升级链必须停止，不得再提醒')
+  } finally {
+    rig.dispose()
+  }
 })
 
 test('router：notifier.notifyAll 抛异常 → 照常等待远程裁决，超时交还桌面（A listener never throws）', async () => {

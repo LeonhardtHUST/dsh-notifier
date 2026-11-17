@@ -80,10 +80,19 @@ test('v0.13 C2：每个事务 fresh-read disk，两个 store 的无关 key 不�
 test('S-04：加载时权限自检——mode 非 0600 → warn + chmod 收紧尝试（失败仅 warn 不阻塞启动）', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-store-perm-'))
   const file = join(dir, 'state.json')
-  // 模拟旧版本/umask 异常/手工放宽留下的过宽 mode
-  writeFileSync(file, JSON.stringify({ k: 1 }), { mode: 0o644 })
+  // T03：fixture 必须带当前 schema，否则 k 不是权威记忆（legacy-unknown 读侧 fail-closed）。
+  const fixture = { __schema: { version: 1, namespace: 'dsh-notifier' }, k: 1 }
+  // 模拟旧版本/umask 异常/手工放宽留下的过宽 mode。Windows 不承载 POSIX 位：
+  // 普通文件恒为 0666，chmod 0644/0600 都只切换只读位（实测 0644→0666、0600→0666、0400→0444）。
+  writeFileSync(file, JSON.stringify(fixture), { mode: 0o644 })
   chmodSync(file, 0o644)
-  assert.equal(statSync(file).mode & 0o777, 0o644, '前置条件：文件确实过宽')
+  const posix = process.platform !== 'win32'
+  if (posix) {
+    assert.equal(statSync(file).mode & 0o777, 0o644, '前置条件：POSIX 下文件确实过宽')
+  } else {
+    // 不得把 Windows 的 0666 当作「已过宽到 0644」；能证明的是它不是受保护的 0600
+    assert.notEqual(statSync(file).mode & 0o777, 0o600, '前置条件：Windows 下文件不是 0600')
+  }
   const warnings = []
   const originalError = console.error
   console.error = (...args) => {
@@ -91,22 +100,43 @@ test('S-04：加载时权限自检——mode 非 0600 → warn + chmod 收紧尝
   }
   try {
     const store = createStore(file)
-    assert.equal(store.get('k'), 1, '权限过宽不阻塞启动读取')
-    assert.equal(statSync(file).mode & 0o777, 0o600, 'chmod 收紧为 0600')
+    assert.equal(store.get('k'), 1, '权限过宽不阻塞启动读取，且当前 schema 的键按权威读取')
     assert.ok(warnings.some((w) => /权限过宽/.test(w)), `必须 warn 权限过宽（实际：${warnings.join(' | ')}）`)
     assert.ok(warnings.some((w) => /尝试收紧/.test(w)), 'warn 明示正在收紧')
+    if (posix) {
+      assert.equal(statSync(file).mode & 0o777, 0o600, 'POSIX chmod 收紧为 0600')
+    } else {
+      // Windows chmod 无法表达 POSIX 0600：只允许断言「尝试过」，绝不谎称权限位已收紧
+      assert.notEqual(statSync(file).mode & 0o777, 0o600, 'Windows 不得声称已收紧到 POSIX 0600')
+      assert.ok(statSync(file).mode & 0o400, '文件仍可读，自检不改变可读性')
+    }
   } finally {
     console.error = originalError
   }
-  // 已是 0600：再启动零告警（幂等，不刷屏）
-  const warnings2 = []
-  console.error = (...args) => {
-    if (String(args[0]).includes('dsh-notifier/store')) warnings2.push(args.join(' '))
-  }
-  try {
-    createStore(file)
-    assert.ok(!warnings2.some((w) => /权限过宽/.test(w)), '0600 现场不重复告警')
-  } finally {
-    console.error = originalError
+  if (posix) {
+    // 已是 0600：再启动零告警（幂等，不刷屏）
+    const warnings2 = []
+    console.error = (...args) => {
+      if (String(args[0]).includes('dsh-notifier/store')) warnings2.push(args.join(' '))
+    }
+    try {
+      createStore(file)
+      assert.ok(!warnings2.some((w) => /权限过宽/.test(w)), '0600 现场不重复告警')
+    } finally {
+      console.error = originalError
+    }
+  } else {
+    // Windows 无法留下 0600：下次启动仍应检测到「过宽」并再次尝试（检测幂等）——
+    // 这是平台能力边界，不是告警刷屏缺陷；不声称 POSIX 权限已收紧。
+    const warnings2 = []
+    console.error = (...args) => {
+      if (String(args[0]).includes('dsh-notifier/store')) warnings2.push(args.join(' '))
+    }
+    try {
+      createStore(file)
+      assert.ok(warnings2.some((w) => /权限过宽/.test(w)), 'Windows 仍能检测到非 0600 现场')
+    } finally {
+      console.error = originalError
+    }
   }
 })
