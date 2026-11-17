@@ -239,37 +239,61 @@ test('isolation: 两个同类型活配置各自持有运行态（token / seq 互
 
 // ------------------------------------------------- desktop subprocess seam
 
-test('desktop(win32): 冻结配置只探测一次 BurntToast；argv-only 子进程 seam 不拼 shell', async () => {
+test('desktop(win32): 冻结配置只检查一次 AUMID 快捷方式；argv-only 子进程 seam 不拼 shell', async () => {
   const spawned = []
+  const existsChecks = []
   const { logger } = makeLogger()
   const source = createOutboundSource([{ type: 'desktop', config: desktop.resolve({ sound: 'always' }) }])
   const config = source.get('desktop').config
+  const decoded = (entry) => {
+    const index = entry.args.indexOf('-EncodedCommand')
+    return index >= 0 ? Buffer.from(entry.args[index + 1], 'base64').toString('utf16le') : ''
+  }
+  // 钉住探测依赖的 env，避免宿主 OS/机器环境差异
+  const savedEnv = { APPDATA: process.env.APPDATA, ProgramData: process.env.ProgramData, PROGRAMDATA: process.env.PROGRAMDATA }
+  process.env.APPDATA = 'C:\\Users\\test\\AppData\\Roaming'
+  delete process.env.ProgramData
+  process.env.PROGRAMDATA = 'C:\\ProgramData'
   await withPlatform('win32', async () => {
     desktop._setSpawnImpl((file, args) => {
       const child = makeFakeChild()
       spawned.push({ file, args, child })
-      queueMicrotask(() => child.emit('close', 0)) // 探测与真实通知都成功
+      queueMicrotask(() => child.emit('close', 0)) // toast 成功
       return child
     })
+    desktop._setExistsImpl((file) => { existsChecks.push(file); return true })
     try {
       assertFrozen(config)
       const notifier = createNotifier({ logger }, source)
       assert.equal((await notifier.notify('desktop', MSG)).ok, true)
       assert.equal((await notifier.notify('desktop', MSG)).ok, true)
 
-      const isProbe = (entry) => entry.args.some((arg) => String(arg).includes('Get-Module'))
-      assert.equal(spawned.filter(isProbe).length, 1, '同一活配置只探测一次 BurntToast')
-      const notifications = spawned.filter((entry) => !isProbe(entry))
-      assert.equal(notifications.length, 2)
-      for (const entry of notifications) {
+      assert.equal(spawned.length, 2, '没有探测子进程：每次通知只 spawn 一个 toast')
+      assert.equal(existsChecks.length, 1, '同一冻结配置只做一次快捷方式检查（结果缓存）')
+      for (const entry of spawned) {
         assert.equal(entry.file, 'powershell.exe')
         assert.ok(Array.isArray(entry.args), '子进程参数必须是 argv 数组（spawn 永不经 shell）')
         assert.ok(entry.args.includes('-NoProfile'))
-        assert.ok(entry.args.some((arg) => String(arg).includes("New-BurntToastNotification -Text @('构建完成','全部用例通过')")))
+        assert.ok(entry.args.includes('-EncodedCommand'), 'toast 脚本经 -EncodedCommand 传入')
+        // 快捷方式存在 → toast 归属 DSH 桌面应用
+        const script = decoded(entry)
+        assert.ok(script.includes("$appId='com.deepseek.dsh'"))
+        // 用户文本不以明文进脚本：标题/正文只以 base64 出现
+        assert.ok(script.includes(Buffer.from(MSG.title, 'utf8').toString('base64')))
+        assert.ok(script.includes(Buffer.from(MSG.content, 'utf8').toString('base64')))
+        assert.ok(!script.includes(MSG.title))
+        assert.ok(!script.includes(MSG.content))
+        assert.ok(script.includes('CreateToastNotifier($appId).Show($toast)'))
       }
       assertFrozen(config)
     } finally {
       desktop._setSpawnImpl(null)
+      desktop._setExistsImpl(null)
+      for (const entry of spawned) entry.child.emit('close', 0) // 清掉超时定时器
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
     }
   })
 })

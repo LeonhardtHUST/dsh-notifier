@@ -117,6 +117,7 @@ const FIELD_HINTS = {
   },
   desktop: {
     sound: { required: false, secret: false, desc: '提示音：auto（默认，仅紧急级）/ always / never' },
+    appId: { required: false, secret: false, desc: 'Windows 通知归属的应用 AUMID（可选；缺省时有 DSH 桌面版用 com.deepseek.dsh，否则用 Windows PowerShell）' },
   },
   'qq-bot': {
     appId: { required: true, secret: true, desc: 'QQ 开放平台开发者 ID（q.qq.com → 机器人开发设置）' },
