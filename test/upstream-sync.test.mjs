@@ -239,6 +239,8 @@ test('CI failure alert also covers timeout, cancel, and action-required conclusi
     assert.match(workflow, new RegExp(`conclusion == '${conclusion}'`), conclusion)
   }
   assert.match(workflow, /head_repository\.full_name/)
+  assert.match(workflow, /workflow_run\.name == 'CI'/)
+  assert.doesNotMatch(workflow, /workflow_run\.path/)
   assert.match(workflow, /head_branch == 'automation\/upstream-sync'/)
   assert.match(workflow, /checks:\s*read/, 'check-runs reads need checks: read when permissions are explicit')
 })
