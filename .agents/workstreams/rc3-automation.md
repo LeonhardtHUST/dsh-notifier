@@ -115,5 +115,5 @@ npm pack --dry-run --json + node scripts/release-automation.mjs pack-check <json
   -> npm payload guard ok: 320 files, no dev/tool directories; automation scripts/tests and test/host files excluded, docs/FORK_RELEASE.md present
 ```
 
-Full `npm test` is intentionally deferred to the lead's serial DSH_HOME run (per 2026-11-17 pause on full suites). Awaiting the lead's git index slot; files ready to stage: `.github/workflows/ci.yml` (permissions + workflow_dispatch), `.github/workflows/release.yml`, `.github/workflows/upstream-sync.yml`, `scripts/release-automation.mjs`, `scripts/upstream-sync.mjs`, `test/release-automation.test.mjs`, `test/upstream-sync.test.mjs`, `docs/FORK_RELEASE.md`, `.agents/workstreams/rc3-automation.md`.
+Full `npm test` is intentionally deferred to the lead's serial DSH_HOME run (per 2026-11-17 pause on full suites). Commits: `8c10a60` (release + upstream sync automation, task-3/task-9) and `d745f7c` (bot identity, client protection, alert conclusions, task-10). Neither is pushed. Files staged in those commits: `.github/workflows/ci.yml`, `release.yml`, `upstream-sync.yml`, `scripts/release-automation.mjs`, `scripts/upstream-sync.mjs`, `test/release-automation.test.mjs`, `test/upstream-sync.test.mjs`, `docs/FORK_RELEASE.md`, `.agents/workstreams/rc3-automation.md`.
 
