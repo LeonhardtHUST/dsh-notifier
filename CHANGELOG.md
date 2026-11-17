@@ -6,7 +6,7 @@ Scoped fork release: `@leonhardthust/dsh-notifier`, maintained at `LeonhardtHUST
 
 ### 验证
 
-- `npm test`：**2082 tests，2082 pass，0 fail，0 skip**，在隔离临时 `DSH_HOME` 执行。
+- `npm test`：**2084 tests，2084 pass，0 fail，0 skip**，在隔离临时 `DSH_HOME` 执行；默认 Node test 并发上限为 4，避免高核 CI 的定时器资源竞争。
 - `node scripts/verify-release.mjs`、`node scripts/verify-host-compat.mjs`、channel matrix 和 npm payload guard 均通过。
 
 

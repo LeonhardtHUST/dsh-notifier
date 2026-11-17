@@ -24,7 +24,7 @@
 
 </div>
 
-`@leonhardthust/dsh-notifier@0.14.0` · test/ 2082 个测试 · 2082 个自动化契约测试
+`@leonhardthust/dsh-notifier@0.14.0` · test/ 2084 个测试 · 2084 个自动化契约测试
 
 ## 它解决什么
 

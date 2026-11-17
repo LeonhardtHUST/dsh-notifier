@@ -7,7 +7,7 @@
 ## 当前基线
 
 - 当前发布线：**0.14.0**（包版本字段 `0.14.0`，scoped 包 `@leonhardthust/dsh-notifier`；首次 npm 发布待本次验证后执行）：OutboundSource 配置保持深冻结，适配器运行态进入私有 WeakMap；DSH `0.2.2-rc.3` 兼容声明、headless/web 隔离 smoke 和生命周期 Promise 兼容已完成。历史正式发布线 **v0.13.1** 仍归属于上游 unscoped 包。
-- 当前测试：`2082`（2082 pass，0 fail，0 skip；隔离临时 `DSH_HOME`）。历史 v0.13.1 为 `2011`、v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`、v0.10.0 为 `1605`、v0.9.7 为 `1548`、v0.9.6 为 `1544`、v0.9.5 为 `1531`、v0.9.0 为 `1352`、npm `0.8.6` 契约为 `909`。
+- 当前测试：`2084`（2084 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，Node test 并发上限4）。历史 v0.13.1 为 `2011`、v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`、v0.10.0 为 `1605`、v0.9.7 为 `1548`、v0.9.6 为 `1544`、v0.9.5 为 `1531`、v0.9.0 为 `1352`、npm `0.8.6` 契约为 `909`。
 - 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`dev` 做开发、`main` 做发布；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `dev` 的审查 PR。
 - 生态收录：v0.13.1 已发布；Awesome DSH / dshfind 的公开描述刷新是发布后的外部同步步骤，不影响仓内版本事实。
 - Node.js ESM、Node `>=22`、无生产依赖、无构建步骤；28 个出站渠道，Telegram/Feishu/QQ Bot/WxPusher/WeChat iLink/DingTalk 六个入站控制通道。
