@@ -159,12 +159,24 @@ export function createHostEventRegistrar(ctx, warn = () => {}, now = Date.now) {
     on(event, listener) {
       const row = rowOf(event)
       row.attempts = increment(row.attempts)
+      // The wrapper runs the listener synchronously (event-side effects keep their
+      // ordering) but always returns a Promise: some host generations call
+      // `callback(...).catch(...)` on lifecycle dispatches and crash on `undefined`
+      // (issue #46 side observation). rc.3 itself already wraps with
+      // `Promise.resolve(returned)` (dsh-agent lib/index.js:673-687), so this is a
+      // compatibility floor, not an rc.3 requirement. A listener rejection is
+      // reported here and contained so no unhandled rejection can escape.
       const wrapped = (...args) => {
         row.received = increment(row.received)
         try { row.lastAt = now() } catch { /* 时间源异常不吞宿主回调 */ }
-        try { return listener(...args) } catch (error) {
+        try {
+          const returned = listener(...args)
+          return Promise.resolve(returned).catch((error) => {
+            report(`宿主事件处理失败: ${event}（${error instanceof Error ? error.name : 'unknown'}）`)
+          })
+        } catch (error) {
           report(`宿主事件处理失败: ${event}（${error instanceof Error ? error.name : 'unknown'}）`)
-          return undefined
+          return Promise.resolve()
         }
       }
 

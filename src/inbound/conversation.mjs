@@ -1278,13 +1278,17 @@ say(t.helpLines.join('\n'))
   }
   const trackAgent = (payload) => {
     const agent = payloadAgent(payload)
-    if (agent === null) return
-    const roots = rootIds()
-    if (roots !== null) {
-      const ids = (Array.isArray(roots) ? roots : Object.values(roots)).map((a) => a?.id)
-      if (!ids.includes(agent.id)) return // subagent：不劫持默认投递目标
+    if (agent !== null) {
+      const roots = rootIds()
+      if (roots !== null) {
+        const ids = (Array.isArray(roots) ? roots : Object.values(roots)).map((a) => a?.id)
+        if (!ids.includes(agent.id)) return Promise.resolve() // subagent：不劫持默认投递目标
+      }
+      latestSessionId = agent.id
     }
-    latestSessionId = agent.id
+    // 同步副作用保持不变；返回 Promise 是旧宿主兼容层：部分宿主对 lifecycle
+    // listener 的返回值直接 .catch（#46 附带观察），undefined 会崩宿主。
+    return Promise.resolve()
   }
   try {
     disposers.push(ctx.on('agent/created', trackAgent))
@@ -1295,6 +1299,7 @@ say(t.helpLines.join('\n'))
       if (agent !== null && agent.id === latestSessionId) latestSessionId = null
       // 显式绑定到该 agent 的用户下次投递会收到「会话不存在」回执并自行 /bind，
       // 不在此清绑定：store 里的绑定在 agent 重启（同 id resume）后仍然有效。
+      return Promise.resolve()
     }))
   } catch { /* 同上 */ }
 

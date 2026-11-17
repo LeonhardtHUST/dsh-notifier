@@ -245,7 +245,13 @@ test('index 装配：预置 bind:telegram:u1 旧绑定 → apply 后 route:sessi
 
 test('index 装配：apply 返回 resolved；createAgentRouter/createSessionRegistry/workspaceOf 三导出可用', () => {
   const { ctx } = bootCtx()
-  const resolved = apply(ctx, { channels: [{ type: 'webhook', url: 'http://public-hook.test/hook' }] })
+  // 真机残留 state 隔离：不传 inbound.stateDir 会落到 defaultStateDir()（$DSH_HOME/~
+  // $HOME/.dsh），在已装 DSH 的开发机上会写真实 profile。本用例只验证导出与
+  // resolved 形状，给出一次性目录即可（index.test.mjs 在文件级设置 DSH_HOME）。
+  const resolved = apply(ctx, {
+    channels: [{ type: 'webhook', url: 'http://public-hook.test/hook' }],
+    inbound: { stateDir: tempDir() },
+  })
   assert.deepEqual(resolved.channels.map((entry) => entry.type), ['webhook'])
   assert.equal(typeof indexExports.createAgentRouter, 'function')
   assert.equal(typeof indexExports.createSessionRegistry, 'function')

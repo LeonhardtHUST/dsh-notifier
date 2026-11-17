@@ -1,84 +1,99 @@
-# test/host — disposable DSH rc.5 test harness
+# test/host — disposable DSH 0.2.2-rc.3 test harness
 
-Reusable infrastructure for driving the **real** DSH 0.2.1-rc.5 CLI against a
-throwaway `DSH_HOME`. It backs the real-host acceptance journeys (T25) and the
-per-stage host-rc5 evidence.
+Reusable infrastructure for driving the **installed** DSH 0.2.2-rc.3 host
+against a throwaway `DSH_HOME`. It backs the rc.3 host-smoke evidence.
 
 Nothing here is a product file. `test/host/**` is deliberately **outside** the
-`npm test` glob (`test/*.test.mjs`), so it never runs as part of the unit suite
-and does not change the 2011/0 baseline. Run it explicitly.
+`npm test` glob (`test/*.test.mjs`), so it never runs as part of the unit suite.
+Run it explicitly.
 
 ## Quick start
 
-```bash
-node test/host/harness.smoke.mjs     # web + headless boot, real notify push
+```powershell
+node test/host/harness.smoke.mjs
 ```
 
-Exit code is `0` on PASS and non-zero on FAIL.
+Exit code is `0` on PASS and non-zero on FAIL. On the Windows Desktop install the
+harness finds the host from `DSH_INSTALL_DIR` / `DSH_NODE_EXECUTABLE`; both may be
+set explicitly for another install:
 
-## Host-rc5 vs provider-live (read this first)
+```powershell
+$env:DSH_INSTALL_DIR = 'C:\...\resources\app.asar\dsh\node_modules\@deepseek-ai\dsh'
+$env:DSH_NODE_EXECUTABLE = 'C:\...\DeepSeek Harness.exe'
+```
+
+## Host-rc3 vs provider-live (read this first)
 
 | Tier | What it is | In scope? |
 |---|---|---|
-| **host-rc5** | The real, shipped DSH 0.2.1-rc.5 CLI composing the real Cordis tree, with our plugin activated in a disposable profile. External I/O stays **local/controlled** (loopback HTTP receiver). | **Yes — this harness.** |
-| **provider-live** | A real IM/provider account or device (Telegram bot, WeChat, WxPusher, …) receiving an actual push. | **No.** Out of scope; there are no real accounts here and none should be requested. Never claim it passed. |
+| **host-rc3** | The installed DSH 0.2.2-rc.3 CLI composing the real Cordis tree, with our plugin activated in a disposable profile. External I/O stays **local/controlled** (loopback HTTP receiver). | **Yes — this harness.** |
+| **provider-live** | A real IM/provider account or device receiving an actual push. | **No.** Out of scope; never claim it passed. |
 
-Everything this harness proves is `host-rc5` (activation, tool/RPC wiring,
-outbound delivery to a local webhook). It says nothing about a real provider.
+Everything this harness proves is host-level (activation, tool/service wiring, the
+authenticated Native route, outbound delivery to a local webhook). It says nothing
+about a real provider.
 
-## Prerequisites
+## Why the Electron runtime
 
-- Node **v22** (`node --version` → v22.x).
-- DSH **0.2.1-rc.5** installed at
-  `/home/orca/work/dsh-notifier-rc5/dsh-host/node_modules/@deepseek-ai/`.
-  CLI entrypoint: `…/@deepseek-ai/dsh/lib/bin.js`.
-- **pnpm is NOT installed** in this environment. Therefore
-  `dsh plugin --profile <name> add <path>` (which shells out to pnpm) is
-  **unavailable**. The harness uses the host's own **profile-bundle path**
-  instead — the same one the host itself uses at boot:
+The Desktop CLI lives inside `app.asar`, which plain Node cannot read. The harness
+therefore boots `DSH_NODE_EXECUTABLE` with `ELECTRON_RUN_AS_NODE=1` (the Electron
+runtime is ASAR-aware); it never resolves a Node from `PATH`.
 
-  ```
-  <home>/profiles/<profile>/package.json   → dsh.profile.bundles: [<base…>, "dsh-notifier"]
-  <home>/profiles/<profile>/node_modules/dsh-notifier/   → plugin payload
-  <home>/profiles/<profile>/cordis.patch.yml             → profile patch layer
-  ```
+## Profile-bundle path
 
-  This is exactly the recipe recorded in
-  `docs/new-host/evidence/T02.json`. The app-boot preflight reads the path
-  manifest directly, so the install gate is exercised identically.
-  `installPluginIntoProfile()` implements this.
+`dsh plugin --profile <name> add` forwards to pnpm, which is not guaranteed here.
+The harness instead writes the host's own profile layout:
+
+```
+<home>/profiles/<profile>/package.json   → dsh.profile.bundles: [<base…>, <bundle row name>]
+<home>/profiles/<profile>/node_modules/<bundle row name>/   → plugin payload
+<home>/profiles/<profile>/cordis.patch.yml                  → profile patch layer
+```
+
+The bundle row name is read from the plugin's own `cordis.patch.yml` insert row
+(`name:`), so the scoped `@leonhardthust/dsh-notifier` identity resolves without
+editing `package.json.name`. The app-boot preflight reads this path manifest
+directly, so the compatibility gate is exercised identically.
 
 ## Environment / paths
 
-- **Scratch root** (the only place we may create homes):
-  `/home/orca/work/dsh-notifier-rc5/scratch/`
-  Homes are named `dshhome-<name>`. `makeDisposableDshHome()` **refuses** any
-  path outside this root.
-- **Real DSH home** `~/.dsh` is sacred. `never-touch-real-profile.md` documents
-  the guard; `assertNotRealDshHome()` throws if a target resolves there.
-- Booting sets a **minimal allowlisted env** (`bootEnv`) — only `PATH`, `HOME`,
-  `DSH_HOME`, `NO_COLOR`, `FORCE_COLOR`. The parent environment is not forwarded
-  wholesale, so no secrets leak into the child.
+- **Scratch root** (the only place homes may be created):
+  `%TEMP%\dsh-notifier-rc3-scratch\` (override with `DSH_NOTIFIER_HOST_SCRATCH`).
+  Homes are named `dshhome-<name>`; every write helper refuses paths outside it.
+- **Real DSH homes** (`%USERPROFILE%\.dsh`, `$HOME/.dsh`) are sacred.
+  `never-touch-real-profile.md` documents the guard.
+- Booting sets a **minimal allowlisted env** (OS plumbing, `DSH_HOME`,
+  `NO_COLOR`, `FORCE_COLOR`, `ELECTRON_RUN_AS_NODE`); the parent environment is not
+  forwarded wholesale, so no secrets leak into the child.
+- Every boot has a bounded timeout and a Windows tree kill; a failed smoke cannot
+  leave an orphan process.
 
 ## API (`test/host/harness.mjs`)
 
 | Helper | Purpose |
 |---|---|
 | `makeDisposableDshHome(name)` | Create `scratch/dshhome-<name>` (guarded). Returns `{ home, name, cleanup }`. |
-| `installPluginIntoProfile({home, profile, bundles, …})` | Write the profile dir + plugin node_modules + `cordis.patch.yml` via the profile-bundle path. `bundles` = the base bundles **without** the plugin. |
-| `installProbeIntoProfile({home, profile, probeDir})` | Add a separate probe bundle (e.g. `fixtures/smoke-probe`) alongside the plugin. |
-| `dumpConfig({home, profile})` | Run `dsh --profile <p> --dump-config` (the T02 verification command). |
-| `bootProfile({home, profile, args, timeoutMs})` | Spawn the CLI with `DSH_HOME=<home>`, bounded timeout, guaranteed group kill (own process group, SIGTERM→SIGKILL). Returns `{ stdout, stderr, waitFor, result, stop, output }`. Never leaves an orphan. |
-| `startLocalReceiver(opts)` | Loopback HTTP server recording `{method, path, headers, body}`. Variants: `{slowMs}` (stalled body for T09 deadline tests), `{stallBody:true}` (never ends the response), `{redirectTo}` (302). Returns `{ port, url(path), requests, close }`. |
-| `readPluginState(dir)` | Read `<dir>/state.json` if present. **Never writes.** Returns `null` when absent. |
+| `installPluginIntoProfile({home, profile, bundles, …})` | Write the profile dir + plugin node_modules + `cordis.patch.yml` via the profile-bundle path. `bundles` = the base bundles **without** the plugin; the install path comes from the bundle patch row. |
+| `installProbeIntoProfile({home, profile, probeDir})` | Add a separate probe bundle alongside the plugin. |
+| `dumpConfig({home, profile})` | Run `dsh --profile <p> --dump-config` through the ASAR-aware runtime. |
+| `bootProfile({home, profile, args, timeoutMs})` | Spawn the CLI with `DSH_HOME=<home>`, bounded timeout, guaranteed kill. Returns `{ stdout, stderr, waitFor, result, stop, output }`. |
+| `startLocalReceiver(opts)` | Loopback HTTP server recording `{method, path, headers, body}`. |
+| `readPluginState(dir)` | Read `<dir>/state.json` if present. **Never writes.** |
 
 ## What the smoke proves
 
 `harness.smoke.mjs`:
+- **real Cordis EventContext** — `event-context.smoke.mjs` is invoked by the smoke
+  through the same host runtime: it imports the installed `@deepseek-ai/cordis`,
+  and proves the lifecycle-listener wrapper returns thenables, keeps synchronous
+  side effects synchronous, survives a legacy `.catch` host, contains a rejecting
+  listener, and that the conversation lifecycle listeners follow the same contract.
 - **A. web** — installs the plugin into a `web` profile (`dsh-base` + `dsh-web-app`),
   runs `--dump-config` (must compose the `dsh-notifier` row, no "skipping"),
-  boots it, and asserts the plugin's own `[dsh-notifier] …渠道` /
-  `[dsh-notifier/admin:server]` line and the advertised web URL.
+  boots it on `--port 0 --no-open`, asserts the plugin log line and the advertised
+  URL, then POSTs to `/dsh-notifier/smoke-probe` and requires the Connection
+  admission to answer `401`/`403` — evidence that the Native route is mounted
+  behind host admission, not that an authenticated call succeeded.
 - **B. headless** — installs the plugin into a `headless` profile
   (`dsh-base` + `dsh-headless`, which composes **neither** `connection` nor
   `webServer`) with a webhook channel pointed at the local receiver, plus the
@@ -89,10 +104,9 @@ outbound delivery to a local webhook). It says nothing about a real provider.
 
 ## Known limitations
 
-- **pnpm absent** → `dsh plugin … add` untestable; the profile-bundle path is
-  used instead (equivalent for the install gate).
-- **No LLM key** → headless exits `1` with `MISSING_CREDENTIAL` **after** the
+- **No LLM key** → headless exits non-zero with `MISSING_CREDENTIAL` **after** the
   plugin has activated and delivered; that exit code is expected, not a plugin
   failure. No full agent turn is driven.
-- The admin UI is not driven (that is T19); no browser screenshot is claimed.
-- Everything under `scratch/` is disposable and is **not** committed.
+- The web client bundle is served by the host, but no browser is driven; rendered
+  slots/themes are not re-verified here.
+- Everything under the scratch root is disposable and is **not** committed.

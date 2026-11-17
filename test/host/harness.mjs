@@ -1,23 +1,24 @@
-// Disposable DSH rc.5 test harness for dsh-notifier.
+// Disposable DSH 0.2.2-rc.3 test harness for dsh-notifier (Windows / ASAR-aware).
 //
 // Goals (see test/host/README.md):
-//   * Every DSH_HOME we create lives under the scratch root and is disposable.
-//   * A profile is installed through the host's OWN profile-bundle path
-//     (profiles/<name>/package.json `dsh.profile.bundles` + a plugin payload
-//     under profiles/<name>/node_modules/<pkg>). This mirrors exactly the
-//     recipe the T02 agent used, because `dsh plugin --profile <name> add`
-//     forwards to pnpm and pnpm is NOT installed in this environment.
-//   * Booting spawns the real `dsh` CLI with DSH_HOME pointing at our
-//     throwaway home, with a bounded timeout and a guaranteed kill (never
-//     leaves an orphan process).
-//   * A loopback HTTP receiver records requests and can simulate slow/stalled
-//     bodies (T09 deadline tests) and redirects.
+//   * Every DSH_HOME we create lives under a scratch root in the OS temp dir and is
+//     disposable. The real ~/.dsh is refused before any write.
+//   * A profile is installed through the host's OWN profile-bundle path:
+//     profiles/<name>/package.json `dsh.profile.bundles` + the plugin payload under
+//     profiles/<name>/node_modules/<bundle row name>. The row name is read from the
+//     package's bundle patch, so the scoped package identity works without editing
+//     package.json.name.
+//   * The installed Desktop CLI lives inside app.asar, which plain Node cannot read.
+//     Booting therefore spawns DSH_NODE_EXECUTABLE with ELECTRON_RUN_AS_NODE=1 (the
+//     Electron runtime is ASAR-aware), never a Node from PATH.
+//   * Booting has a bounded timeout and a guaranteed kill (Windows tree kill), so no
+//     orphan process survives a failed smoke.
+//   * A loopback HTTP receiver records the real outbound POST used by the smoke.
 //
-// This module has NO side effects on import. It only touches paths under
-// SCRATCH_ROOT (and the repo, for reading) and refuses anything reaching the
-// real ~/.dsh.
+// This module has NO side effects on import. It only touches paths under the scratch
+// root (and reads the repo) and refuses anything reaching the real ~/.dsh.
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import {
   cpSync,
@@ -28,8 +29,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // ── fixed locations ────────────────────────────────────────────────────────
@@ -37,19 +38,64 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 export const REPO_ROOT = resolve(__dirname, '..', '..')
 
+/** Coordinates of the installed DSH host; resolved without reading inside ASAR. */
+function detectInstallDir() {
+  const fromEnv = process.env.DSH_INSTALL_DIR
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') return resolve(fromEnv.trim())
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA
+    const candidates = []
+    if (typeof localAppData === 'string' && localAppData.trim() !== '') {
+      candidates.push(join(localAppData, 'Programs', 'DeepSeek Harness', 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh'))
+    }
+    for (const candidate of candidates) {
+      if (existsSync(join(candidate, 'lib', 'bin.js'))) return candidate
+    }
+  }
+  return null
+}
+
+/** The running Electron executable (GUI subsystem on Windows), or a plain node. */
+function detectNodeExecutable(installDir) {
+  const fromEnv = process.env.DSH_NODE_EXECUTABLE
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') return resolve(fromEnv.trim())
+  if (installDir !== null) {
+    // <root>/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh -> <root>
+    const root = resolve(installDir, '..', '..', '..', '..', '..')
+    const candidate = join(root, 'DeepSeek Harness.exe')
+    if (existsSync(candidate)) return candidate
+  }
+  return process.execPath
+}
+
+/** Absolute install directory of @deepseek-ai/dsh, or null when undetectable. */
+export const DSH_INSTALL_DIR = detectInstallDir()
+
+/** Electron executable used to boot the ASAR-hosted CLI. */
+export const DSH_NODE_EXECUTABLE = detectNodeExecutable(DSH_INSTALL_DIR)
+
+/** The pinned CLI entrypoint (inside app.asar on Desktop). */
+export const DSH_CLI = DSH_INSTALL_DIR !== null ? join(DSH_INSTALL_DIR, 'lib', 'bin.js') : null
+
 /** The ONLY directory we are ever allowed to create DSH_HOMEs under. */
-export const SCRATCH_ROOT = '/home/orca/work/dsh-notifier-rc5/scratch'
+export const SCRATCH_ROOT = resolve(
+  process.env.DSH_NOTIFIER_HOST_SCRATCH ?? join(tmpdir(), 'dsh-notifier-rc3-scratch'),
+)
 
-/** The real, sacred profile home. Any path resolution that lands here throws. */
-export const REAL_DSH_HOME = join(homedir(), '.dsh')
+/** Every real profile home on this machine; any path resolution landing here throws. */
+export const REAL_DSH_HOMES = [homedir(), process.env.HOME, process.env.USERPROFILE]
+  .filter((value) => typeof value === 'string' && value.trim() !== '')
+  .map((value) => resolve(value, '.dsh'))
+  .filter((value, index, all) => all.indexOf(value) === index)
 
-/** The pinned DSH 0.2.1-rc.5 CLI entrypoint (host install, not the repo). */
-export const DSH_CLI =
-  '/home/orca/work/dsh-notifier-rc5/dsh-host/node_modules/@deepseek-ai/dsh/lib/bin.js'
+/** Back-compat alias used by the smoke's guard demonstration. */
+export const REAL_DSH_HOME = REAL_DSH_HOMES[0] ?? join(homedir(), '.dsh')
 
-/** The host packages (base bundles) live next to the CLI. */
-export const DSH_HOST_NODE_MODULES =
-  '/home/orca/work/dsh-notifier-rc5/dsh-host/node_modules'
+export const HOST_PREREQUISITES = {
+  ok: DSH_INSTALL_DIR !== null && DSH_CLI !== null,
+  installDir: DSH_INSTALL_DIR,
+  nodeExecutable: DSH_NODE_EXECUTABLE,
+}
 
 // ── path guards ────────────────────────────────────────────────────────────
 
@@ -71,19 +117,17 @@ export function assertInsideScratch(p) {
 }
 
 /**
- * Throws if `p` resolves to the real ~/.dsh (or anything inside it). Called by
+ * Throws if `p` resolves to any real ~/.dsh (or anything inside it). Called by
  * every write helper so a typo can never damage the maintainer's live profile.
  */
 export function assertNotRealDshHome(p) {
   const resolved = resolve(p)
-  if (isInside(REAL_DSH_HOME, resolved)) {
-    throw new Error(
-      `refusing to touch the real DSH home (${REAL_DSH_HOME}); got ${resolved}`,
-    )
-  }
-  // Also reject any scratch path that strings onto ~/.dsh by accident.
-  if (resolved === resolve(REAL_DSH_HOME)) {
-    throw new Error(`refusing to touch the real DSH home: ${resolved}`)
+  for (const realHome of REAL_DSH_HOMES) {
+    if (isInside(realHome, resolved)) {
+      throw new Error(
+        `refusing to touch the real DSH home (${realHome}); got ${resolved}`,
+      )
+    }
   }
   return resolved
 }
@@ -138,11 +182,18 @@ function readBundlePatchPath(pkgDir) {
   return join(pkgDir, patch)
 }
 
+/** First inserted row `name` in a bundle patch; used as the profile-installed path. */
+function readBundleRowName(pkgDir) {
+  const patchPath = readBundlePatchPath(pkgDir)
+  if (patchPath === null || !existsSync(patchPath)) return null
+  const match = /^\s*name:\s*['"]?([^'"\n]+?)['"]?\s*$/m.exec(readFileSync(patchPath, 'utf8'))
+  return match === null ? null : match[1]
+}
+
 /**
- * Copy a package directory into a profile's node_modules, skipping the
- * obvious heavyweight / irrelevant entries. We copy (not symlink) so the
- * profile is self-contained and a later repo edit cannot bleed into a home
- * that is supposed to be frozen for evidence.
+ * Copy a package directory into a profile's node_modules, skipping the obvious
+ * heavyweight / irrelevant entries. We copy (not symlink) so the profile is
+ * self-contained and a later repo edit cannot bleed into a frozen home.
  */
 function copyPackageInto(destDir, srcDir) {
   const skip = new Set(['node_modules', '.git', '.agents', '.claude', '.codex', '.opencode'])
@@ -161,13 +212,16 @@ function copyPackageInto(destDir, srcDir) {
 
 /**
  * Install the dsh-notifier plugin (this repo) into a profile using the host's
- * profile-bundle path — the exact T02 recipe.
+ * profile-bundle path.
  *
  * Layout produced under <home>/profiles/<profile>/:
- *   package.json        { dsh.profile.bundles: [...defaults, "dsh-notifier"] }
+ *   package.json        { dsh.profile.bundles: [...defaults, <bundle row name>] }
  *   cordis.yml          [] (empty root; the tree is composed from patches)
  *   cordis.patch.yml    [] (profile patch layer; caller may override)
- *   node_modules/<pkg>/ the plugin payload (copied from <pkgDir>)
+ *   node_modules/<bundle row name>/ the plugin payload (copied from <pkgDir>)
+ *
+ * The bundle row name comes from the package's own bundle patch, so a scoped
+ * package name (e.g. @scope/name) resolves without editing package.json.name.
  *
  * @param {object} o
  * @param {string} o.home            DSH_HOME (must be inside scratch)
@@ -178,7 +232,7 @@ function copyPackageInto(destDir, srcDir) {
  * @param {string} [o.linkMode]      "copy" (default) | "symlink"
  * @param {string} [o.cordisPatchYaml] contents for the profile cordis.patch.yml
  *                                     (default "[]\n")
- * @returns {{ profileDir, pluginDir, packageJsonPath, patchPath }}
+ * @returns {{ profileDir, pluginDir, bundleRowName, packageJsonPath, patchPath }}
  */
 export function installPluginIntoProfile({
   home,
@@ -196,24 +250,26 @@ export function installPluginIntoProfile({
   guardWritePath(home)
   guardWritePath(join(home, 'profiles', profile))
 
-  const pkgPath = join(repoRoot, 'package.json')
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-  const pluginName = pkg.name
-  if (pluginName !== 'dsh-notifier') {
-    throw new Error(`expected repo package name "dsh-notifier", got "${pluginName}"`)
+  const bundleRowName = readBundleRowName(repoRoot)
+  if (bundleRowName === null) {
+    throw new Error(`expected a bundle patch row name in ${join(repoRoot, 'package.json')}`)
+  }
+  const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'))
+  if (typeof pkg.name !== 'string' || pkg.name.trim() === '') {
+    throw new Error('expected the repo package.json to declare a package name')
   }
 
   const profileDir = join(home, 'profiles', profile)
   const nmDir = join(profileDir, 'node_modules')
-  const pluginDir = join(nmDir, pluginName)
+  const pluginDir = join(nmDir, ...bundleRowName.split('/'))
   mkdirSync(nmDir, { recursive: true })
 
-  // Profile manifest — bundles = base bundles + our plugin.
+  // Profile manifest — bundles = base bundles + our bundle row.
   const profilePkg = {
     name: `dsh-profile-${profile}`,
     private: true,
     dependencies: {},
-    dsh: { profile: { bundles: [...bundles, pluginName] } },
+    dsh: { profile: { bundles: [...bundles, bundleRowName] } },
   }
   guardWritePath(join(profileDir, 'package.json'))
   writeFileSync(join(profileDir, 'package.json'), JSON.stringify(profilePkg, null, 2) + '\n')
@@ -229,7 +285,7 @@ export function installPluginIntoProfile({
   guardWritePath(join(profileDir, 'cordis.patch.yml'))
   writeFileSync(join(profileDir, 'cordis.patch.yml'), cordisPatchYaml)
 
-  // Plugin payload into the profile's node_modules.
+  // Plugin payload into the profile's node_modules (bundle row path).
   if (linkMode === 'symlink') {
     guardWritePath(pluginDir)
     symlinkSync(resolve(repoRoot), pluginDir, 'dir')
@@ -246,6 +302,7 @@ export function installPluginIntoProfile({
   return {
     profileDir,
     pluginDir,
+    bundleRowName,
     packageJsonPath: join(profileDir, 'package.json'),
     patchPath: join(profileDir, 'cordis.patch.yml'),
   }
@@ -253,8 +310,7 @@ export function installPluginIntoProfile({
 
 /**
  * Copy a *separate* probe plugin package into a profile's node_modules and
- * append it to the profile bundle list. Used to prove activation from inside
- * a real boot without touching product code.
+ * append it to the profile bundle list.
  *
  * @param {object} o
  * @param {string} o.home
@@ -279,52 +335,97 @@ export function installProbeIntoProfile({ home, profile, probeDir }) {
   return { pluginDir }
 }
 
-// ── dumpConfig (verification command, mirrors T02) ─────────────────────────
+// ── boot environment ───────────────────────────────────────────────────────
+
+/**
+ * Build a minimal, allowlisted env for a booted dsh child. We deliberately do
+ * NOT forward the parent's full environment (no secrets leak). Only the OS
+ * plumbing Electron/Node need, a harmless HOME pointer, and DSH_HOME are set.
+ */
+export function bootEnv(home) {
+  const env = {
+    DSH_HOME: home,
+    // Deterministic, no-color, no proxy surprises.
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+    // The Desktop CLI is ASAR-hosted; run its Electron binary as Node.
+    ELECTRON_RUN_AS_NODE: '1',
+  }
+  const passthrough = process.platform === 'win32'
+    ? ['PATH', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA']
+    : ['PATH', 'HOME', 'TMPDIR', 'LANG']
+  for (const key of passthrough) {
+    const value = process.env[key]
+    if (typeof value === 'string' && value !== '') env[key] = value
+  }
+  return env
+}
+
+// ── process helpers ────────────────────────────────────────────────────────
+
+/**
+ * Kill a child and, on Windows, its whole tree. The Electron-as-node CLI may
+ * have a short-lived wrapper process, so tree kill is the safe default.
+ */
+function killTree(child, { force = false } = {}) {
+  if (child === null || child === undefined || child.pid === undefined) return
+  if (process.platform === 'win32') {
+    try {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+    } catch {
+      try { child.kill() } catch { /* already gone */ }
+    }
+    return
+  }
+  try {
+    process.kill(force ? -child.pid : -child.pid, force ? 'SIGKILL' : 'SIGTERM')
+  } catch {
+    try { child.kill(force ? 'SIGKILL' : 'SIGTERM') } catch { /* already gone */ }
+  }
+}
+
+/** One bounded, environment-isolated dsh invocation with guaranteed cleanup. */
+function spawnDsh({ home, args, env = bootEnv(home) }) {
+  guardWritePath(home)
+  const child = spawn(DSH_NODE_EXECUTABLE, [DSH_CLI, ...args], {
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+  return child
+}
+
+// ── dumpConfig ─────────────────────────────────────────────────────────────
 
 /**
  * Run `dsh --profile <profile> --dump-config` and return the composed tree.
- * This is the exact verification command the T02 evidence uses:
- *   DSH_HOME=<home> node <cli> --profile web --dump-config | grep dsh-notifier
  *
  * @returns {Promise<{ exitCode:number, stdout:string, stderr:string }>}
  */
 export function dumpConfig({ home, profile, timeoutMs = 60000 }) {
   guardWritePath(home)
   return new Promise((resolveP) => {
-    const child = spawn(
-      process.execPath,
-      [DSH_CLI, '--profile', profile, '--dump-config'],
-      { env: { ...bootEnv(home) }, stdio: ['ignore', 'pipe', 'pipe'] },
-    )
+    let child
+    try {
+      child = spawnDsh({ home, args: ['--profile', profile, '--dump-config'] })
+    } catch (error) {
+      resolveP({ exitCode: null, stdout: '', stderr: String(error) })
+      return
+    }
     let stdout = ''
     let stderr = ''
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
-    child.stdout.on('data', (d) => (stdout += d))
-    child.stderr.on('data', (d) => (stderr += d))
+    const timer = setTimeout(() => killTree(child, { force: true }), timeoutMs)
+    child.stdout.on('data', (d) => (stdout += d.toString()))
+    child.stderr.on('data', (d) => (stderr += d.toString()))
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      resolveP({ exitCode: null, stdout, stderr: stderr + String(error) })
+    })
     child.on('close', (code) => {
       clearTimeout(timer)
       resolveP({ exitCode: code, stdout, stderr })
     })
   })
-}
-
-// ── boot environment ───────────────────────────────────────────────────────
-
-/**
- * Build a minimal, allowlisted env for a booted dsh child. We deliberately do
- * NOT forward the parent's full environment (no secret leakage). Only PATH,
- * HOME (a harmless pointer for node), and DSH_HOME are set. NODE_ENV quiet
- * flags keep startup logs focused.
- */
-export function bootEnv(home) {
-  return {
-    PATH: process.env.PATH ?? '/usr/bin:/bin',
-    HOME: process.env.HOME ?? homedir(),
-    DSH_HOME: home,
-    // Deterministic, no-color, no proxy surprises.
-    NO_COLOR: '1',
-    FORCE_COLOR: '0',
-  }
 }
 
 // ── bootProfile ────────────────────────────────────────────────────────────
@@ -338,9 +439,9 @@ export function bootEnv(home) {
  * @param {object} o
  * @param {string} o.home
  * @param {string} o.profile
- * @param {string[]} [o.args]      app args after the profile (e.g. a task text)
- * @param {number} [o.timeoutMs]   hard kill deadline (default 30000)
- * @param {NodeJS.ProcessEnv} [o.env] extra env (merged over bootEnv)
+ * @param {string[]} [o.args]      app args after the profile
+ * @param {number} [o.timeoutMs]   hard kill deadline (default 45000)
+ * @param {object} [o.env]         extra env (merged over bootEnv)
  * @returns {Promise<{ pid:number, stdout:string, stderr:string,
  *                     exitCode:number|null, killed:boolean,
  *                     waitFor:(p:RegExp|string, ms?:number)=>Promise<string>,
@@ -351,23 +452,14 @@ export function bootProfile({
   home,
   profile,
   args = [],
-  timeoutMs = 30000,
+  timeoutMs = 45000,
   env = {},
 }) {
   guardWritePath(home)
   return new Promise((resolveP, rejectP) => {
     let child
     try {
-      child = spawn(
-        process.execPath,
-        [DSH_CLI, '--profile', profile, ...args],
-        {
-          env: { ...bootEnv(home), ...env },
-          stdio: ['ignore', 'pipe', 'pipe'],
-          // Own process group so a kill takes the whole (possible) tree down.
-          detached: true,
-        },
-      )
+      child = spawnDsh({ home, args: ['--profile', profile, ...args], env: { ...bootEnv(home), ...env } })
     } catch (error) {
       rejectP(error)
       return
@@ -375,15 +467,14 @@ export function bootProfile({
 
     let stdout = ''
     let stderr = ''
-    let killed = false
+    let killedByUs = false
     let settled = false
 
     const output = () => stdout + stderr
 
-    // Hard deadline: guaranteed kill, never leaves an orphan.
     const hardTimer = setTimeout(() => {
-      killed = true
-      killTree(child)
+      killedByUs = true
+      killTree(child, { force: true })
     }, timeoutMs)
 
     child.stdout.on('data', (d) => (stdout += d.toString()))
@@ -397,7 +488,7 @@ export function bootProfile({
         res({
           exitCode: code,
           signal: signal ?? null,
-          killed,
+          killed: killedByUs,
           stdout,
           stderr,
         })
@@ -406,21 +497,14 @@ export function bootProfile({
         clearTimeout(hardTimer)
         if (settled) return
         settled = true
-        res({ exitCode: null, signal: null, killed, stdout, stderr, error: String(err) })
+        res({ exitCode: null, signal: null, killed: killedByUs, stdout, stderr, error: String(err) })
       })
     })
 
-    /**
-     * Await a pattern in the merged output. Rejects on timeout so callers get
-     * a clear failure rather than hanging.
-     */
     function waitFor(pattern, ms = timeoutMs) {
       const re = pattern instanceof RegExp ? pattern : new RegExp(escapeRe(pattern))
       return new Promise((res, rej) => {
-        const check = () => {
-          const m = re.exec(output())
-          return m ? m : null
-        }
+        const check = () => re.exec(output())
         const now = check()
         if (now) {
           res(now[0])
@@ -446,18 +530,18 @@ export function bootProfile({
       })
     }
 
-    /** SIGTERM, then SIGKILL after a grace period (whole group). */
     async function stop() {
-      if (child.exitCode !== null || child.signalCode !== null) return
-      killTree(child, 'SIGTERM')
-      const deadline = Date.now() + 3000
-      while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 50))
-      }
-      if (child.exitCode === null && child.signalCode === null) {
-        killed = true
-        killTree(child, 'SIGKILL')
-      }
+      if (settled) return
+      killedByUs = true
+      killTree(child)
+      // Give the close event a bounded window; then force the tree down.
+      const handle = exitPromise
+      const timedOut = await Promise.race([
+        handle.then(() => false),
+        new Promise((res) => setTimeout(() => res(true), 3000)),
+      ])
+      if (timedOut) killTree(child, { force: true })
+      await exitPromise.catch(() => undefined)
     }
 
     resolveP({
@@ -468,27 +552,13 @@ export function bootProfile({
       get stderr() {
         return stderr
       },
-      killed: () => killed,
+      killed: () => killedByUs,
       waitFor,
       output,
       result: () => exitPromise,
       stop,
     })
   })
-}
-
-/** Kill a (possibly detached) child's whole process group, falling back to the pid. */
-function killTree(child, signal = 'SIGKILL') {
-  try {
-    // Negative pid targets the process group (we spawned detached).
-    process.kill(-child.pid, signal)
-  } catch {
-    try {
-      child.kill(signal)
-    } catch {
-      /* already gone */
-    }
-  }
 }
 
 function escapeRe(s) {
@@ -553,7 +623,6 @@ export function startLocalReceiver(opts = {}) {
     if (stallBody) {
       // Record the admission but never finish the response.
       record(null)
-      // Do not call res.end(); keep the socket open until the client gives up.
       return
     }
     if (slowMs > 0) {
@@ -601,18 +670,29 @@ export function readPluginState(dir) {
 
 // ── misc helpers ───────────────────────────────────────────────────────────
 
-/** True when pnpm resolves on PATH (expected FALSE in this environment). */
+/** True when pnpm resolves on PATH. */
 export function hasPnpm() {
-  const dirs = (process.env.PATH ?? '').split(':').filter(Boolean)
-  return dirs.some((d) => existsSync(join(d, 'pnpm')))
+  const separator = process.platform === 'win32' ? ';' : ':'
+  return (process.env.PATH ?? '').split(separator).filter(Boolean).some((dir) => {
+    for (const name of ['pnpm', 'pnpm.cmd', 'pnpm.exe']) {
+      if (existsSync(join(dir, name))) return true
+    }
+    return false
+  })
+}
+
+/** First path segment of the scratch root, for log display only. */
+export function scratchLabel() {
+  return basename(SCRATCH_ROOT)
 }
 
 export const constants = {
   REPO_ROOT,
   SCRATCH_ROOT,
-  REAL_DSH_HOME,
+  REAL_DSH_HOMES,
+  DSH_INSTALL_DIR,
   DSH_CLI,
-  DSH_HOST_NODE_MODULES,
+  DSH_NODE_EXECUTABLE,
 }
 
 export default {

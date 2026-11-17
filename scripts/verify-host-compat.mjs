@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// Host compatibility guard: keep the declared @deepseek-ai/dsh-session peer range, the
-// DSH host matrix in docs/compatibility-matrix.md, and dshWorkshop.compatibility.dshVersions
-// in one mechanically checked contract. Zero runtime dependencies: only exact or `||`-joined
-// exact versions are accepted, so a hand-written parser replaces the `semver` package.
+// Host compatibility guard: keep engines.dsh, the declared @deepseek-ai/dsh-session peer range,
+// the DSH host matrix in docs/compatibility-matrix.md, and
+// dshWorkshop.compatibility.dshVersions in one mechanically checked contract. The rc.3
+// preflight reads an own `engines.dsh` alone and ignores the @deepseek-ai/dsh* peers, so the
+// two declarations must name exactly the same verified versions. Zero runtime dependencies:
+// only exact or `||`-joined exact versions are accepted, so a hand-written parser replaces
+// the `semver` package.
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -61,6 +64,16 @@ export function verifyHostCompat(packageJson, matrix) {
       `peer range segment is not an exact version (no ^/>=/* guessing allowed): ${JSON.stringify(alternative)}`)
   }
 
+  const enginesDsh = packageJson?.engines?.dsh
+  check(typeof enginesDsh === 'string' && enginesDsh.trim() !== '',
+    'engines.dsh must declare the verified DSH host range (the rc.3 preflight reads it alone)')
+  const engineAlternatives = parsePeerRange(enginesDsh)
+  check(engineAlternatives.length > 0, 'engines.dsh must declare at least one version')
+  for (const alternative of engineAlternatives) {
+    check(EXACT_VERSION.test(alternative),
+      `engines.dsh segment is not an exact version (no ^/>=/* guessing allowed): ${JSON.stringify(alternative)}`)
+  }
+
   const meta = packageJson?.peerDependenciesMeta
   const optionalPeer = meta !== null && typeof meta === 'object' ? meta[peerPackage] : undefined
   check(optionalPeer?.optional === true,
@@ -73,13 +86,20 @@ export function verifyHostCompat(packageJson, matrix) {
 
   for (const version of verified) {
     check(alternatives.includes(version), `verified runtime ${version} is not covered by the peer range`)
+    check(engineAlternatives.includes(version), `verified runtime ${version} is not covered by engines.dsh`)
   }
   for (const alternative of alternatives) {
     check(verified.includes(alternative), `peer range segment ${alternative} has no verified matrix row`)
   }
+  for (const alternative of engineAlternatives) {
+    check(verified.includes(alternative), `engines.dsh segment ${alternative} has no verified matrix row`)
+  }
   for (const version of other) {
     check(!alternatives.includes(version), `non-verified runtime ${version} must not be covered by the peer range`)
+    check(!engineAlternatives.includes(version), `non-verified runtime ${version} must not be covered by engines.dsh`)
   }
+  check(JSON.stringify(engineAlternatives) === JSON.stringify(alternatives),
+    `engines.dsh ${JSON.stringify(enginesDsh)} must equal the peer range ${JSON.stringify(range)}`)
 
   const declared = packageJson?.dshWorkshop?.compatibility?.dshVersions
   check(Array.isArray(declared), 'dshWorkshop.compatibility.dshVersions must be an array')
@@ -118,7 +138,7 @@ function main() {
     return
   }
   const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
-  console.log(`host compatibility guard ok: ${packageJson.peerDependencies['@deepseek-ai/dsh-session']}`)
+  console.log(`host compatibility guard ok: engines.dsh=${packageJson.engines.dsh}, peer ${packageJson.peerDependencies['@deepseek-ai/dsh-session']}`)
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
