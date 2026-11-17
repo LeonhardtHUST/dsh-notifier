@@ -38,7 +38,7 @@ jobs:
       contents: read
     env:
       # Keep any host-profile side effects out of the runner's default home.
-      DSH_HOME: ${{ runner.temp }}/dsh-home
+      DSH_HOME: ${{ github.workspace }}/.dsh-ci-home
     outputs:
       version: ${{ steps.release.outputs.version }}
       tag_name: ${{ steps.release.outputs.tag_name }}

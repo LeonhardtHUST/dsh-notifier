@@ -227,7 +227,7 @@ test('release workflow stays tokenless and does not reintroduce registry-url', (
   assert.match(release, /id-token:\s*write/)
   assert.match(release, /environment:\s*npm-release/)
   assert.match(release, /npm publish --access public --ignore-scripts/)
-  assert.match(release, /DSH_HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/dsh-home/)
+  assert.match(release, /DSH_HOME:\s*\$\{\{\s*github\.workspace\s*\}\}\/\.dsh-ci-home/)
 
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
   assert.match(ci, /workflow_dispatch:/, 'the sync job dispatches read-only CI explicitly')
