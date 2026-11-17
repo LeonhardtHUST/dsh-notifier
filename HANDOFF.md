@@ -1,6 +1,6 @@
 # dsh-notifier 当前交接快照
 
-更新时间：2026-11-17。维护 fork：`LeonhardtHUST/dsh-notifier`；npm：`@leonhardthust/dsh-notifier@0.14.0`；上游：`THEWOLFWALKER/dsh-notifier`。当前从 `origin/dev@aabc7d7` 建立的 `codex/rc3-scoped-release` 完成代码与发布准备，尚未首次 npm 发布。历史发布快照保留在 `docs/new-host/history/` 和 CHANGELOG，本文件只描述当前状态。
+更新时间：2026-11-17。维护 fork：`LeonhardtHUST/dsh-notifier`；npm：`@leonhardthust/dsh-notifier@0.14.0`；上游：`THEWOLFWALKER/dsh-notifier`。`main`、`dev` 和 `codex/rc3-scoped-release` 已统一到 `7ab9861`；`v0.14.0` tag 与 GitHub Release 已创建，npm latest 已发布。Trusted Publisher 已绑定 `release.yml` / `npm-release`，后续版本自动发布开关已配置。历史发布快照保留在 `docs/new-host/history/` 和 CHANGELOG，本文件只描述当前状态。
 
 | 测试 | `npm test` **2084 tests**（2084 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
 
