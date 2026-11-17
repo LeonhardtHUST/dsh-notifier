@@ -50,6 +50,7 @@ import { createSurfaceHealth } from './control-surface/health.mjs'
 import { createOutboundConfigService } from './control-surface/outbound-config.mjs'
 import { migrateCanonicalChannelConfig } from './control-surface/channel-config-migration.mjs'
 import { createChannelProjection } from './control-surface/channels.mjs'
+import { createLocalNotificationSurface } from './control-surface/local.mjs'
 import { createTaskProjection } from './control-surface/tasks.mjs'
 import { createQuestionProjection } from './control-surface/questions.mjs'
 import { createLaunchTickets } from './control-surface/launch-ticket.mjs'
@@ -781,6 +782,12 @@ export function apply(ctx, config = {}) {
     warn('approval 已配置但没有任何入站通道凭证：远程审批未启动。请先配置任一通道（如 inbound.telegram.botToken 或扫码落盘凭证），启动后经 /pair 配对即可使用')
   }
 
+  // v0.14.1：本机通知（desktop/bell）复用 outbound 配置事务，仅换一层「开关 + 选项」视图。
+  const surfaceLocal = createLocalNotificationSurface({
+    outboundConfig: outboundConfigService,
+    health: surfaceHealth,
+  })
+
   // v0.12 Native Control Surface. Existing projections remain the only authorities.
   const surfaceTasks = createTaskProjection({
     getTasks: () => {
@@ -826,6 +833,7 @@ export function apply(ctx, config = {}) {
     channelTest: (type, raw) => runChannelTest({ type, rawConfig: raw, strings }),
     tasks: surfaceTasks,
     questions: surfaceQuestions,
+    local: surfaceLocal,
     activity: surfaceActivity,
     health: surfaceHealth,
     storageStatus: () => {

@@ -16,15 +16,32 @@ window.__ModuleLoader__.load({
       intro: 'DSH 的通知、远程响应与运行状态',
       needsAttention: '需要你处理',
       running: '正在运行',
-      channels: '通知渠道',
+      channels: '远程通知渠道',
       activity: '最近活动',
       viewAll: '查看全部',
       manageChannels: '管理渠道',
       addChannel: '添加渠道',
-      noChannels: '尚未配置通知渠道',
-      noChannelsHint: '配置一个渠道后，DSH 的重要事件可以直接送到你的设备。',
-      setupChannel: '设置通知渠道',
-      setupFirst: '设置第一个通知渠道',
+      noChannels: '尚未配置远程通知渠道',
+      noChannelsHint: '配置一个远程渠道后，DSH 的重要事件可以送到你的手机或聊天工具。',
+      setupChannel: '设置远程通知渠道',
+      setupFirst: '设置第一个远程通知渠道',
+      desktopTitle: '桌面通知',
+      desktopIntro: '在这台电脑上弹出系统通知，只在本机显示，不经过任何网络服务。',
+      desktopToggle: '在这台电脑上显示通知',
+      desktopOn: '已开启',
+      desktopOff: '未开启',
+      desktopUnsupported: '此系统不支持',
+      desktopBestEffort: '未专门适配，按标准方式尝试',
+      soundLabel: '提示音',
+      soundAuto: '仅紧急通知出声',
+      soundAlways: '总是出声',
+      soundNever: '静音',
+      desktopTestAccepted: '已交给系统通知中心。没看到的话，检查系统的勿扰或专注模式。',
+      managedByYaml: '由配置文件（cordis.patch.yml）启用，这里不能关闭。',
+      otherLocal: '其他本机提醒',
+      bellTitle: '终端响铃',
+      bellHint: '只在终端里运行 DSH 时能听到。',
+      openDesktop: '设置桌面通知',
       setupIntro: '选择你已经在使用的渠道，保存后发送一条真实测试通知。',
       saveAndTest: '保存并测试',
       save: '保存',
@@ -91,15 +108,32 @@ window.__ModuleLoader__.load({
       intro: 'Notifications, remote responses, and runtime state for DSH',
       needsAttention: 'Needs your attention',
       running: 'Running',
-      channels: 'Notification channels',
+      channels: 'Remote channels',
       activity: 'Recent activity',
       viewAll: 'View all',
       manageChannels: 'Manage channels',
       addChannel: 'Add channel',
-      noChannels: 'No notification channel configured',
-      noChannelsHint: 'Configure a channel to deliver important DSH events to your device.',
-      setupChannel: 'Set up notification',
-      setupFirst: 'Set up first channel',
+      noChannels: 'No remote channel configured',
+      noChannelsHint: 'Configure a remote channel to receive important DSH events on your phone or chat app.',
+      setupChannel: 'Set up remote channel',
+      setupFirst: 'Set up your first remote channel',
+      desktopTitle: 'Desktop notifications',
+      desktopIntro: 'Show system notifications on this computer. They stay on this device and use no network service.',
+      desktopToggle: 'Show notifications on this computer',
+      desktopOn: 'On',
+      desktopOff: 'Off',
+      desktopUnsupported: 'Not supported on this system',
+      desktopBestEffort: 'Not specifically adapted; using the standard method',
+      soundLabel: 'Sound',
+      soundAuto: 'Only for urgent notifications',
+      soundAlways: 'Always',
+      soundNever: 'Silent',
+      desktopTestAccepted: 'Handed to the system notification center. If nothing appears, check Do Not Disturb / Focus settings.',
+      managedByYaml: 'Enabled by configuration (cordis.patch.yml); it cannot be turned off here.',
+      otherLocal: 'Other local alerts',
+      bellTitle: 'Terminal bell',
+      bellHint: 'Only audible when DSH runs in a terminal.',
+      openDesktop: 'Set up desktop notifications',
       setupIntro: 'Choose a channel you already use, save it, then send a real test notification.',
       saveAndTest: 'Save and test',
       save: 'Save',
@@ -170,6 +204,11 @@ window.__ModuleLoader__.load({
       return ''
     }
 
+    function isLocalRow(row) {
+      // scope 是新服务端的权威标记；按 type 兜底以兼容旧服务端。
+      return row?.scope === 'local' || row?.type === 'desktop' || row?.type === 'bell'
+    }
+
     function createRpcClient(ctx) {
       async function call(endpoint, payload = {}, signal) {
         const result = await ctx.connection.rpc.call(RPC_CHANNEL, endpoint, payload, signal)
@@ -203,6 +242,7 @@ window.__ModuleLoader__.load({
         view: { kind: 'home' },
         home: null,
         channels: null,
+        local: null,
         tasks: null,
         activity: null,
         channel: null,
@@ -218,7 +258,7 @@ window.__ModuleLoader__.load({
       let fallbackTimer = null
       let disposed = false
       // v0.12.1（P1-13）：同一资源只接受最新一代请求的响应，避免迟到数据覆盖当前视图。
-      const generations = { home: 0, channels: 0, channel: 0, tasks: 0, activity: 0 }
+      const generations = { home: 0, channels: 0, local: 0, channel: 0, tasks: 0, activity: 0 }
       let paused = false
 
       const emit = (patch) => {
@@ -236,7 +276,7 @@ window.__ModuleLoader__.load({
         return {
           epochChanged,
           patch: {
-            ...(epochChanged ? { home: null, channels: null, tasks: null, activity: null, channel: null } : {}),
+            ...(epochChanged ? { home: null, channels: null, local: null, tasks: null, activity: null, channel: null } : {}),
             epoch: incomingEpoch,
             revision: epochChanged ? incomingRevision : Math.max(snapshot.revision, incomingRevision),
             connectionState: 'connected',
@@ -272,6 +312,18 @@ window.__ModuleLoader__.load({
           return value
         } catch (error) {
           if (generation !== generations.channels) return null
+          throw error
+        }
+      }
+      async function loadLocal() {
+        const generation = ++generations.local
+        try {
+          const value = await rpc.call('local.get')
+          if (generation !== generations.local) return value
+          commit('local', value)
+          return value
+        } catch (error) {
+          if (generation !== generations.local) return null
           throw error
         }
       }
@@ -317,6 +369,7 @@ window.__ModuleLoader__.load({
         try {
           const kind = snapshot.view.kind
           if (kind === 'channels') await loadChannels()
+          else if (kind === 'local') await loadLocal()
           else if (kind === 'channel') await loadChannel(snapshot.view.type)
           else if (kind === 'tasks') await loadTasks()
           else if (kind === 'activity') await loadActivity()
@@ -324,7 +377,7 @@ window.__ModuleLoader__.load({
           emit({ staleAt: null, connectionState: 'connected' })
           return true
         } catch {
-          const hasData = snapshot.home !== null || snapshot.channels !== null || snapshot.channel !== null || snapshot.tasks !== null || snapshot.activity !== null
+          const hasData = snapshot.home !== null || snapshot.channels !== null || snapshot.local !== null || snapshot.channel !== null || snapshot.tasks !== null || snapshot.activity !== null
           emit({ staleAt: Date.now(), connectionState: hasData ? 'stale' : 'disconnected' })
           return false
         }
@@ -337,6 +390,21 @@ window.__ModuleLoader__.load({
           setError(null)
           await loadChannel(type)
           return value
+        } finally {
+          setBusy(key, false)
+        }
+      }
+      async function saveLocal(type, enabled, options) {
+        const key = `local:${type}`
+        setBusy(key, true)
+        try {
+          const value = await rpc.call('local.save', { type, enabled, ...(options ? { options } : {}) })
+          setError(null)
+          await loadLocal()
+          return value
+        } catch (error) {
+          await loadLocal().catch(() => {})
+          throw error
         } finally {
           setBusy(key, false)
         }
@@ -442,6 +510,7 @@ window.__ModuleLoader__.load({
         getSnapshot: () => snapshot,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
         loadHome, loadChannels, loadChannel, loadTasks, loadActivity,
+        loadLocal, saveLocal,
         refreshCurrent, saveChannel, testChannel, settleQuestion, createStandaloneLaunch,
         navigate, startWait, setActive, dispose,
         // v0.12.1（P1-09）：视图必须能把业务失败写入统一错误出口。
@@ -648,6 +717,23 @@ window.__ModuleLoader__.load({
       return { opened: true, popup }
     }
 
+    function LocalRow({ local, onOpen, t }) {
+      const platform = local?.platform ?? null
+      const desktop = local?.desktop ?? null
+      const unsupported = platform?.support === 'unsupported'
+      const enabled = desktop?.enabled === true
+      const stateText = unsupported ? t('desktopUnsupported') : enabled ? t('desktopOn') : t('desktopOff')
+      return h('button', {
+        type: 'button', className: 'dn-row dn-rowButton dn-localRow', onClick: onOpen,
+        'aria-label': `${t('openDesktop')} · ${stateText}`,
+      },
+      h(StateDot, { state: !unsupported && enabled ? 'done' : 'idle' }),
+      h('span', { className: 'dn-rowMain' },
+        h('strong', { className: 'dn-rowTitle' }, t('desktopTitle')),
+        h('span', { className: 'dn-rowMeta' }, t('desktopIntro'))),
+      h('span', { className: 'dn-rowAside dn-stateText' }, stateText, ' ›'))
+    }
+
     function HomeView({ ctx, controller, state, t }) {
       const home = state.home
       useEffect(() => { void controller.loadHome().catch(error => controller.reportError(error)) }, [])
@@ -663,6 +749,7 @@ window.__ModuleLoader__.load({
           title: t('advanced'),
         }, '···'),
       ]
+      const remoteChannels = (home?.channels ?? []).filter(channel => !isLocalRow(channel))
       return h('div', { className: 'dn-page' },
         h(PageHead, { title: t('title'), intro: t('intro'), actions }),
         h(StatusRow, { ctx, summary: home?.summary, t, onRetry: () => void controller.refreshCurrent() }),
@@ -684,9 +771,16 @@ window.__ModuleLoader__.load({
           action: h('button', { className: 'dn-link', onClick: () => controller.navigate({ kind: 'tasks' }) }, `${t('viewAll')} →`),
         }, ...(home?.tasks?.length ? home.tasks.slice(0, 5).map(task => h(TaskRow, { key: task.taskRef, ctx, task })) : [h('p', { className: 'dn-empty', key: 'empty' }, t('noTasks'))])),
         h(Section, {
+          title: t('desktopTitle'),
+        }, h(LocalRow, {
+          key: 'desktop', t,
+          local: home?.local ?? null,
+          onOpen: () => controller.navigate({ kind: 'local' }),
+        })),
+        h(Section, {
           title: t('channels'),
           action: h('button', { className: 'dn-link', onClick: () => controller.navigate({ kind: 'channels' }) }, `${t('manageChannels')} →`),
-        }, ...(home?.channels?.length ? home.channels.slice(0, 5).map(channel =>
+        }, ...(remoteChannels.length ? remoteChannels.slice(0, 5).map(channel =>
           h(ChannelRow, { key: channel.type, ctx, channel, t, onOpen: () => controller.navigate({ kind: 'channel', type: channel.type }) }))
           : [h('div', { className: 'dn-emptyState', key: 'empty' },
               h('strong', null, t('noChannels')),
@@ -704,7 +798,7 @@ window.__ModuleLoader__.load({
       const [phase, setPhase] = useState('choose')
       const [testResult, setTestResult] = useState(null)
       const [error, setError] = useState(null)
-      const candidates = (channels ?? []).filter(channel => channel?.notify?.editable !== false)
+      const candidates = (channels ?? []).filter(channel => channel?.notify?.editable !== false && !isLocalRow(channel))
       const selected = candidates.find(channel => channel.type === type)
       const fields = selected?.notify?.fields ?? {}
       const setField = (key, value) => setDraft(current => ({ ...current, [key]: value }))
@@ -777,11 +871,15 @@ window.__ModuleLoader__.load({
       const data = state.channels
       useEffect(() => { void controller.loadChannels().catch(error => controller.reportError(error)) }, [])
       const [setup, setSetup] = useState(state.view.setup === true)
-      const channels = data?.channels ?? []
+      const channels = (data?.channels ?? []).filter(channel => !isLocalRow(channel))
       if (setup) return h('div', { className: 'dn-page' },
+        h('div', { className: 'dn-detailBack' },
+          h('button', { className: 'dn-link', onClick: () => setSetup(false) }, `← ${t('back')}`)),
         h(PageHead, { title: t('setupChannel') }),
         h(SetupFlow, { ctx, controller, channels, t, onDone: () => { setSetup(false); void controller.loadChannels().catch(error => controller.reportError(error)) } }))
       return h('div', { className: 'dn-page' },
+        h('div', { className: 'dn-detailBack' },
+          h('button', { className: 'dn-link', onClick: () => controller.navigate({ kind: 'home' }) }, `← ${t('back')}`)),
         h(PageHead, {
           title: t('channels'),
           actions: h(Button, { kind: 'primary', onClick: () => setSetup(true) }, t('addChannel')),
@@ -791,6 +889,111 @@ window.__ModuleLoader__.load({
             key: channel.type, ctx, channel, t,
             onOpen: () => controller.navigate({ kind: 'channel', type: channel.type }),
           }))))
+    }
+
+    // 纯函数返回元素（不是组件）：让 LocalView 的树里直接是 button，便于测试与读屏。
+    function switchButton({ checked, disabled, label, onToggle }) {
+      return h('button', {
+        type: 'button',
+        className: 'dn-switch',
+        role: 'switch',
+        'aria-checked': checked ? 'true' : 'false',
+        'aria-label': label,
+        disabled,
+        onClick: () => void onToggle(),
+      }, h('span', { className: 'dn-switchThumb', 'aria-hidden': true }))
+    }
+
+    function LocalView({ ctx, controller, state, t }) {
+      useEffect(() => { void controller.loadLocal().catch(error => controller.reportError(error)) }, [])
+      const [testResult, setTestResult] = useState(null)
+      const local = state.local
+      const platform = local?.platform ?? null
+      const desktop = local?.desktop ?? null
+      const bell = local?.bell ?? null
+      const support = platform?.support ?? 'supported'
+      const unsupported = support === 'unsupported'
+      const desktopEnabled = desktop?.enabled === true
+      const bellEnabled = bell?.enabled === true
+      const desktopManagedByYaml = desktop?.managedBy === 'yaml'
+      const bellManagedByYaml = bell?.managedBy === 'yaml'
+      const desktopBusy = state.busy['local:desktop'] === true
+      const bellBusy = state.busy['local:bell'] === true
+      const busyTest = state.busy['test:desktop'] === true
+      const sound = desktop?.sound ?? 'auto'
+      const saveDesktop = (enabled, options) => {
+        void controller.saveLocal('desktop', enabled, options).catch(error => controller.reportError(error))
+      }
+      const saveBell = (enabled) => {
+        void controller.saveLocal('bell', enabled, { count: bell?.count ?? 1 }).catch(error => controller.reportError(error))
+      }
+      const runTest = () => {
+        setTestResult(null)
+        void controller.testChannel('desktop').then(value => setTestResult(value)).catch(error => {
+          controller.reportError(error)
+          setTestResult({ status: 'failed', detail: { en: String(error?.message ?? ''), zh: String(error?.message ?? '') } })
+        })
+      }
+      const soundKeys = { auto: 'soundAuto', always: 'soundAlways', never: 'soundNever' }
+      return h('div', { className: 'dn-page' },
+        h('div', { className: 'dn-detailBack' },
+          h('button', { className: 'dn-link', onClick: () => controller.navigate({ kind: 'home' }) }, `← ${t('back')}`)),
+        h(PageHead, { title: t('desktopTitle'), intro: t('desktopIntro') }),
+        h(ErrorNotice, { error: state.error, t, onRetry: () => void controller.loadLocal().catch(error => controller.reportError(error)) }),
+        platform
+          ? h('div', { className: 'dn-platformLine' },
+              h(StateDot, { state: unsupported ? 'error' : support === 'best-effort' ? 'warn' : 'done' }),
+              h('span', null, resolveText(ctx, platform.detail) || (unsupported ? t('desktopUnsupported') : support === 'best-effort' ? t('desktopBestEffort') : '')))
+          : null,
+        h('div', { className: 'dn-switchRow' },
+          h('div', { className: 'dn-rowMain' },
+            h('strong', { className: 'dn-rowTitle' }, t('desktopToggle')),
+            support === 'best-effort' ? h('span', { className: 'dn-rowMeta' }, t('desktopBestEffort')) : null),
+          switchButton({
+            checked: desktopEnabled,
+            // 不支持的平台只禁止新开启；已开启的开关要能关掉，否则用户被锁死。
+            disabled: local === null || desktopBusy || desktopManagedByYaml || (unsupported && !desktopEnabled),
+            label: t('desktopToggle'),
+            onToggle: () => saveDesktop(!desktopEnabled, desktopEnabled ? undefined : { sound }),
+          })),
+        desktopManagedByYaml ? h('p', { className: 'dn-note' }, t('managedByYaml')) : null,
+        h('div', { className: 'dn-soundRow' },
+          h('span', { className: 'dn-fieldLabel' }, t('soundLabel')),
+          h('div', { className: 'dn-radioGroup', role: 'radiogroup', 'aria-label': t('soundLabel') },
+            ...Object.keys(soundKeys).map(option => h('button', {
+              key: option,
+              type: 'button',
+              className: `dn-option ${sound === option ? 'is-selected' : ''}`,
+              role: 'radio',
+              'aria-checked': sound === option ? 'true' : 'false',
+              disabled: !desktopEnabled || desktopBusy,
+              onClick: () => { if (option !== sound) saveDesktop(true, { sound: option }) },
+            }, t(soundKeys[option]))))),
+        h('div', { className: 'dn-formActions' },
+          h(Button, { disabled: !desktopEnabled || busyTest, onClick: runTest }, busyTest ? t('testing') : t('test'))),
+        testResult
+          ? h('p', {
+              className: testResult.status === 'delivered' || testResult.status === 'accepted' ? 'dn-successText' : 'dn-error',
+              role: 'status',
+            },
+            testResult.status === 'delivered'
+              ? t('testDelivered')
+              : testResult.status === 'accepted'
+                ? t('desktopTestAccepted')
+                : `${t('testFailed')}${testResult.detail ? ` · ${resolveText(ctx, testResult.detail)}` : ''}`)
+          : null,
+        h(Section, { title: t('otherLocal') },
+          h('div', { className: 'dn-switchRow' },
+            h('div', { className: 'dn-rowMain' },
+              h('strong', { className: 'dn-rowTitle' }, t('bellTitle')),
+              h('span', { className: 'dn-rowMeta' }, t('bellHint'))),
+            switchButton({
+              checked: bellEnabled,
+              disabled: local === null || bellBusy || bellManagedByYaml,
+              label: t('bellTitle'),
+              onToggle: () => saveBell(!bellEnabled),
+            })),
+          bellManagedByYaml ? h('p', { className: 'dn-note' }, t('managedByYaml')) : null))
     }
 
     function ChannelDetailView({ ctx, controller, state, t }) {
@@ -936,12 +1139,19 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         controller.startWait()
       }, [])
-      if (state.view.kind === 'channels') return h(ChannelsView, { ctx, controller, state, t })
+      let view
+      if (state.view.kind === 'channels') view = h(ChannelsView, { ctx, controller, state, t })
       // v0.12.1（P1-12）：按渠道类型重建详情组件，避免草稿/测试结果跨渠道串台。
-      if (state.view.kind === 'channel') return h(ChannelDetailView, { key: state.view.type, ctx, controller, state, t })
-      if (state.view.kind === 'tasks') return h(TasksView, { ctx, controller, state, t })
-      if (state.view.kind === 'activity') return h(ActivityView, { ctx, controller, state, t })
-      return h(HomeView, { ctx, controller, state, t })
+      else if (state.view.kind === 'channel') view = h(ChannelDetailView, { key: state.view.type, ctx, controller, state, t })
+      else if (state.view.kind === 'local') view = h(LocalView, { ctx, controller, state, t })
+      else if (state.view.kind === 'tasks') view = h(TasksView, { ctx, controller, state, t })
+      else if (state.view.kind === 'activity') view = h(ActivityView, { ctx, controller, state, t })
+      else view = h(HomeView, { ctx, controller, state, t })
+      // 宿主 main slot 给的是固定高度容器且不自带滚动；滚动必须由页面自己持有。
+      return h('div', {
+        className: 'dn-scroll',
+        key: `${state.view.kind}:${state.view.type ?? ''}`,
+      }, view)
     }
 
     function SidebarIcon({ size = 18, active = false }) {
@@ -987,6 +1197,7 @@ window.__ModuleLoader__.load({
 
     const CSS = `
       .dn-page{box-sizing:border-box;max-width:960px;margin:0 auto;padding:28px clamp(24px,4vw,48px) 48px;color:var(--dsw-alias-label-primary);font-family:inherit}
+      .dn-scroll{box-sizing:border-box;flex:1 1 auto;width:100%;height:100%;max-height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
       .dn-pageHead{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 28px}
       .dn-pageTitle{margin:0;font-size:20px;line-height:28px;font-weight:500}
       .dn-pageIntro{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
@@ -1014,6 +1225,16 @@ window.__ModuleLoader__.load({
       .dn-questionBody{flex:1;display:flex;flex-direction:column;gap:6px}.dn-options{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
       .dn-option{border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:inherit;border-radius:var(--dsw-radius-md);padding:6px 10px;cursor:pointer}
       .dn-option.is-selected{border-color:var(--dsw-alias-state-business-primary)}
+      .dn-switchRow{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:52px;padding:8px 0}
+      .dn-switch{position:relative;flex:0 0 auto;width:36px;height:20px;border:.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);padding:0;cursor:pointer;transition:background .16s ease}
+      .dn-switch[aria-checked="true"]{border-color:transparent;background:var(--dsw-alias-state-business-primary)}
+      .dn-switch:disabled{opacity:.5;cursor:default}
+      .dn-switch:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+      .dn-switchThumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-bg-base);transition:transform .16s ease}
+      .dn-switch[aria-checked="true"] .dn-switchThumb{transform:translateX(16px)}
+      .dn-platformLine{display:flex;gap:8px;align-items:flex-start;margin:0 0 8px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
+      .dn-soundRow{display:flex;flex-direction:column;gap:6px;margin:16px 0 4px}.dn-fieldLabel{font-size:13px;line-height:20px;font-weight:500}
+      .dn-radioGroup{display:flex;gap:6px;flex-wrap:wrap}.dn-radioGroup .dn-option:disabled{opacity:.5;cursor:default}
       .dn-channelGlyph{width:36px;height:36px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);display:grid;place-items:center;font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1)}
       .dn-empty,.dn-note{font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);margin:8px 0}
       .dn-emptyState{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px 0}.dn-emptyState span{color:var(--dsw-alias-label-secondary);font-size:13px}
@@ -1028,7 +1249,7 @@ window.__ModuleLoader__.load({
       .dn-pluginConfig{display:flex;flex-direction:column;gap:8px;padding:8px 0}.dn-pluginConfig>p,.dn-activation>p{margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
       @keyframes dnPulse{0%,100%{opacity:.35}50%{opacity:1}}
       @media(max-width:719px){.dn-page{padding:20px 16px 40px}.dn-pageHead{gap:12px}.dn-row{align-items:flex-start}.dn-rowAside{align-items:flex-start}.dn-options{flex-direction:column}.dn-option{width:100%;text-align:left}}
-      @media(prefers-reduced-motion:reduce){.dn-stateDot--ongoing{animation:none}}
+      @media(prefers-reduced-motion:reduce){.dn-stateDot--ongoing{animation:none}.dn-switch,.dn-switchThumb{transition:none}}
     `
 
     return {

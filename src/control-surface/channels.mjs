@@ -3,6 +3,7 @@ import { INBOUND_CHANNELS } from '../inbound/channels-registry.mjs'
 import { toInboundChannelName } from '../inbound/capability-matrix.mjs'
 import { inboundApplyMode, outboundApplyMode } from './apply-mode.mjs'
 import { healthView } from './health.mjs'
+import { LOCAL_TYPES } from './local.mjs'
 import { exposureOf, isPublicExposure } from '../security/exposure.mjs'
 
 const labelOf = (type) => ({ en: type, zh: type })
@@ -65,6 +66,8 @@ export function createChannelProjection({ outboundSource, outboundConfig, inboun
       const inConfig = inRow?.config ?? {}
       return {
         type,
+        // v0.14.1：本地通知（desktop/bell）与远程渠道分开呈现，客户端按 scope 过滤。
+        scope: LOCAL_TYPES.includes(type) ? 'local' : 'remote',
         label: labelOf(type),
         capabilities: {
           notify: notifyCapable,

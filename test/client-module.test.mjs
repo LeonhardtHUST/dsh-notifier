@@ -33,11 +33,24 @@ function textOf(node) {
   return chunks.join('')
 }
 
+function collect(node, predicate) {
+  const out = []
+  const visit = value => {
+    if (value === null || value === undefined || value === false) return
+    if (Array.isArray(value)) { for (const item of value) visit(item); return }
+    if (typeof value !== 'object') return
+    if (predicate(value)) out.push(value)
+    visit(value.children)
+  }
+  visit(node)
+  return out
+}
+
 function loadModule({ rpcCall } = {}) {
   let source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
   source = source.replace(
     "return {\n      inject: ['slots', 'connection', 'locale', 'layout'],",
-    "return {\n      __test: { createController, launchAdvancedConsole, QuestionCard, TaskRow, ChannelRow, ActivityRow },\n      inject: ['slots', 'connection', 'locale', 'layout'],",
+    "return {\n      __test: { createController, launchAdvancedConsole, QuestionCard, TaskRow, ChannelRow, ActivityRow, LocalView, LocalRow, HomeView, ChannelsView, MainPanel, isLocalRow },\n      inject: ['slots', 'connection', 'locale', 'layout'],",
   )
   assert.match(source, /__test:/)
   let registration
@@ -209,6 +222,236 @@ test('frozen Question/Task/Channel/Activity view fields render exactly', () => {
   assert.match(textOf(activity), /just now/)
   assert.match(textOf(activity), /Delivery warning/)
   assert.doesNotMatch(textOf(activity), /2026-09-25T00:00:00/)
+})
+
+test('local preferences load into the snapshot and reset with epoch changes', async () => {
+  let epoch = 'epoch-a'
+  const { mod, ctx } = loadModule({
+    async rpcCall(_channel, endpoint) {
+      if (endpoint === 'local.get') return { ok: true, value: { epoch, revision: 2, desktop: { type: 'desktop', enabled: true } } }
+      if (endpoint === 'surface.home') return { ok: true, value: { epoch, revision: 2, summary: {}, questions: [], tasks: [], channels: [], activity: [] } }
+      return { ok: true, value: { epoch, revision: 2 } }
+    },
+  })
+  const controller = mod.__test.createController(ctx)
+  await controller.loadLocal()
+  assert.equal(controller.getSnapshot().local.desktop.enabled, true)
+  epoch = 'epoch-b'
+  await controller.loadHome()
+  assert.equal(controller.getSnapshot().local, null, 'epoch 变化必须清除本机通知快照')
+  controller.dispose()
+})
+
+test('saveLocal posts the exact payload and reloads local state', async () => {
+  const calls = []
+  const { mod, ctx } = loadModule({
+    async rpcCall(_channel, endpoint, payload) {
+      calls.push({ endpoint, payload })
+      if (endpoint === 'local.get') return { ok: true, value: { epoch: 'e', revision: 1, desktop: { type: 'desktop', enabled: true, sound: 'always' } } }
+      return { ok: true, value: { type: payload.type, enabled: payload.enabled, applied: true, applyMode: 'hot' } }
+    },
+  })
+  const controller = mod.__test.createController(ctx)
+  await controller.saveLocal('desktop', true, { sound: 'always' })
+  const saveIndex = calls.findIndex(call => call.endpoint === 'local.save')
+  const reloadIndex = calls.findIndex(call => call.endpoint === 'local.get')
+  assert.ok(saveIndex >= 0 && reloadIndex > saveIndex, 'saveLocal 必须先保存再重读本机状态')
+  assert.equal(JSON.stringify(calls[saveIndex].payload), JSON.stringify({ type: 'desktop', enabled: true, options: { sound: 'always' } }))
+  assert.equal(controller.getSnapshot().local.desktop.sound, 'always')
+  controller.dispose()
+})
+
+test('saveLocal rethrows the server error and still reloads local state', async () => {
+  let localReads = 0
+  const { mod, ctx } = loadModule({
+    async rpcCall(_channel, endpoint) {
+      if (endpoint === 'local.save') return { ok: false, error: { code: 'dsh-notifier/not-supported', message: 'managed by yaml' } }
+      if (endpoint === 'local.get') { localReads += 1; return { ok: true, value: { epoch: 'e', revision: 1 } } }
+      return { ok: true, value: { epoch: 'e', revision: 1 } }
+    },
+  })
+  const controller = mod.__test.createController(ctx)
+  await assert.rejects(
+    () => controller.saveLocal('desktop', false, undefined),
+    error => error.code === 'dsh-notifier/not-supported',
+  )
+  assert.equal(localReads, 1, '保存失败后仍要重读本机状态，避免界面停在旧开关上')
+  controller.dispose()
+})
+
+test('MainPanel owns the scroll container the host does not provide', () => {
+  const state = {
+    view: { kind: 'home' },
+    home: null, channels: null, local: null, tasks: null, activity: null, channel: null,
+    busy: {}, error: null, connectionState: 'connected',
+  }
+  const controller = {
+    getSnapshot: () => state,
+    subscribe: () => () => {},
+    startWait() {},
+    loadHome: async () => {},
+    refreshCurrent() {},
+    navigate() {},
+    reportError() {},
+  }
+  const { mod, ctx } = loadModule()
+  const tree = mod.__test.MainPanel({ controller, ctx })
+  assert.equal(tree.props.className, 'dn-scroll')
+  assert.equal(tree.props.key, 'home:', '视图身份变化必须重建滚动容器（回到顶部）')
+})
+
+test('HomeView lists only remote channels and always offers the desktop row', () => {
+  const { mod } = loadModule()
+  const state = {
+    home: {
+      summary: {},
+      questions: [],
+      tasks: [],
+      channels: [
+        { type: 'telegram', label: 'Telegram' },
+        { type: 'desktop', scope: 'local' },
+        { type: 'bell', scope: 'local' },
+        { type: 'slack', scope: 'local' },
+      ],
+      activity: [],
+    },
+    busy: {},
+    connectionState: 'connected',
+  }
+  const controller = { loadHome: async () => {}, reportError() {}, navigate() {}, refreshCurrent() {} }
+  const tree = mod.__test.HomeView({ ctx: { locale: { resolveText: value => value } }, controller, state, t: key => key })
+  const channelRows = collect(tree, node => node.type === mod.__test.ChannelRow)
+  assert.deepEqual(channelRows.map(row => row.props.channel.type), ['telegram'])
+  const localRows = collect(tree, node => node.type === mod.__test.LocalRow)
+  assert.equal(localRows.length, 1)
+  assert.equal(localRows[0].props.local, null, '旧服务端没有 home.local 时仍要渲染桌面通知行')
+})
+
+test('ChannelsView filters local rows out of the remote list', () => {
+  const { mod } = loadModule()
+  const state = {
+    channels: { channels: [{ type: 'telegram' }, { type: 'desktop', scope: 'local' }, { type: 'bell' }] },
+    view: { kind: 'channels' },
+    busy: {},
+    error: null,
+  }
+  const controller = { loadChannels: async () => {}, reportError() {}, navigate() {} }
+  const tree = mod.__test.ChannelsView({ ctx: {}, controller, state, t: key => key })
+  const rows = collect(tree, node => node.type === mod.__test.ChannelRow)
+  assert.deepEqual(rows.map(row => row.props.channel.type), ['telegram'])
+})
+
+test('LocalView reflects desktop state in switch, sound radios, and yaml management', () => {
+  const { mod } = loadModule()
+  const ctx = { locale: { resolveText: value => value } }
+  const t = key => key
+  const controller = { loadLocal: async () => {}, saveLocal: async () => {}, testChannel: async () => ({ status: 'delivered' }), reportError() {}, navigate() {} }
+  const base = {
+    platform: { os: 'windows', support: 'supported', detail: 'Windows 11' },
+    desktop: { type: 'desktop', enabled: true, active: true, managedBy: 'ui', sound: 'auto', health: {} },
+    bell: { type: 'bell', enabled: false, active: false, managedBy: null, count: 1, health: {} },
+  }
+  const render = local => mod.__test.LocalView({ ctx, controller, t, state: { local, busy: {}, error: null } })
+
+  const switchesOf = tree => collect(tree, node => node.props?.role === 'switch')
+  const desktopSwitch = tree => switchesOf(tree).find(node => node.props['aria-label'] === 'desktopToggle')
+
+  const tree = render(base)
+  assert.equal(desktopSwitch(tree).props['aria-checked'], 'true')
+  assert.equal(desktopSwitch(tree).props.disabled, false)
+  assert.deepEqual(collect(tree, node => node.props?.role === 'radio').map(node => node.props.key), ['auto', 'always', 'never'])
+
+  const unsupported = render({ ...base, platform: { ...base.platform, support: 'unsupported', detail: '' }, desktop: { ...base.desktop, enabled: false } })
+  assert.equal(desktopSwitch(unsupported).props.disabled, true, '不支持的平台不能新开启')
+  assert.match(textOf(unsupported), /desktopUnsupported/)
+
+  const yaml = render({ ...base, desktop: { ...base.desktop, managedBy: 'yaml' } })
+  assert.equal(desktopSwitch(yaml).props.disabled, true, 'YAML 托管时不能在本机界面关闭')
+  assert.match(textOf(yaml), /managedByYaml/)
+})
+
+test('LocalView only blocks turning desktop notifications on for unsupported platforms', () => {
+  const { mod } = loadModule()
+  const ctx = { locale: { resolveText: value => value } }
+  const t = key => key
+  const saves = []
+  const controller = {
+    loadLocal: async () => {},
+    saveLocal: (...args) => { saves.push(args); return Promise.resolve({}) },
+    testChannel: async () => ({ status: 'delivered' }),
+    reportError() {},
+    navigate() {},
+  }
+  const local = {
+    platform: { os: 'other', support: 'unsupported', detail: '' },
+    desktop: { type: 'desktop', enabled: true, active: false, managedBy: 'ui', sound: 'auto', health: {} },
+    bell: { type: 'bell', enabled: false, active: false, managedBy: null, count: 1, health: {} },
+  }
+  const desktopSwitchOf = tree => collect(tree, node => node.props?.role === 'switch').find(node => node.props['aria-label'] === 'desktopToggle')
+
+  const enabledTree = mod.__test.LocalView({ ctx, controller, t, state: { local, busy: {}, error: null } })
+  const enabledSwitch = desktopSwitchOf(enabledTree)
+  assert.equal(enabledSwitch.props.disabled, false, '平台不支持但通知已开启时必须允许关闭，否则用户被锁死')
+  enabledSwitch.props.onClick()
+  assert.deepEqual(saves[0], ['desktop', false, undefined], '关闭不应携带 options')
+
+  const offTree = mod.__test.LocalView({
+    ctx, controller, t,
+    state: { local: { ...local, desktop: { ...local.desktop, enabled: false } }, busy: {}, error: null },
+  })
+  assert.equal(desktopSwitchOf(offTree).props.disabled, true, '不支持的平台不能新开启')
+})
+
+test('LocalView disables the YAML-managed bell switch and says why', () => {
+  const { mod } = loadModule()
+  const ctx = { locale: { resolveText: value => value } }
+  const t = key => key
+  const controller = { loadLocal: async () => {}, saveLocal: async () => {}, testChannel: async () => ({}), reportError() {}, navigate() {} }
+  const local = {
+    platform: { os: 'linux', support: 'supported', detail: 'Linux' },
+    desktop: { type: 'desktop', enabled: false, active: false, managedBy: null, sound: 'auto', health: {} },
+    bell: { type: 'bell', enabled: true, active: true, managedBy: 'yaml', count: 1, health: {} },
+  }
+  const tree = mod.__test.LocalView({ ctx, controller, t, state: { local, busy: {}, error: null } })
+  const bellSwitch = collect(tree, node => node.props?.role === 'switch').find(node => node.props['aria-label'] === 'bellTitle')
+  assert.equal(bellSwitch.props.disabled, true, 'YAML 托管的终端响铃不能在界面关闭')
+  assert.match(textOf(tree), /managedByYaml/, '禁用要给出原因，而不是点了报错')
+})
+
+test('ChannelsView offers a way out of setup and back to the channel list', () => {
+  const { mod } = loadModule()
+  const controller = { loadChannels: async () => {}, reportError() {}, navigate() {} }
+  const backLinks = tree => collect(tree, node => node.type === 'button' && node.props?.className === 'dn-link')
+    .filter(button => textOf(button).includes('←'))
+
+  const setupTree = mod.__test.ChannelsView({
+    ctx: {}, controller, t: key => key,
+    state: { channels: { channels: [] }, view: { kind: 'channels', setup: true }, busy: {}, error: null },
+  })
+  assert.equal(backLinks(setupTree).length, 1, '设置流程必须能退回远程通知渠道列表')
+
+  const listTree = mod.__test.ChannelsView({
+    ctx: {}, controller, t: key => key,
+    state: { channels: { channels: [] }, view: { kind: 'channels' }, busy: {}, error: null },
+  })
+  assert.equal(backLinks(listTree).length, 1, '远程通知渠道列表必须能返回首页')
+})
+
+test('isLocalRow trusts scope and falls back to type for older servers', () => {
+  const { mod } = loadModule()
+  assert.equal(mod.__test.isLocalRow({ type: 'desktop' }), true)
+  assert.equal(mod.__test.isLocalRow({ type: 'bell' }), true)
+  assert.equal(mod.__test.isLocalRow({ type: 'telegram', scope: 'local' }), true)
+  assert.equal(mod.__test.isLocalRow({ type: 'telegram', scope: 'remote' }), false)
+  assert.equal(mod.__test.isLocalRow(null), false)
+})
+
+test('panel scroll CSS keeps the host page pattern', () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  assert.match(source, /\.dn-scroll\{[^}]*flex:1 1 auto;width:100%/, '主面板是 flex 子项，滚动容器必须撑满可用高度')
+  assert.match(source, /\.dn-scroll\{[^}]*height:100%[^}]*overflow-y:auto/)
+  assert.match(source, /\.dn-scroll\{[^}]*overscroll-behavior:contain/)
+  assert.match(source, /@media\(prefers-reduced-motion:reduce\)\{[\s\S]*?\.dn-switch,\.dn-switchThumb\{transition:none\}/)
 })
 
 test('static safety invariants remain true', () => {

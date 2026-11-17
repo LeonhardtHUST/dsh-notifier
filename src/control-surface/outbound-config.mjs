@@ -30,6 +30,25 @@ function safeGet(store, key) {
   try { return typeof store?.get === 'function' ? store.get(key) : undefined } catch { return undefined }
 }
 
+/**
+ * v0.14.1（审查项 P1）：读「配置来源」的严格通道。
+ * safeGet 的吞错语义是历史兼容行为（projection/raw/describe 遇到坏 store 继续降级），
+ * 但「这个渠道是否已配置、能不能安全关闭」不能把读失败当成「不存在」——那会让 UI 把
+ * 读错的 canonical 覆盖当成可撤销的空配置，no-op 报成功后配置在 store 恢复时复活。
+ * 因此来源判据用本函数：store.get 抛错 → storage-failed（保留 cause 供诊断，不外泄值）。
+ */
+function strictGet(store, key) {
+  if (typeof store?.get !== 'function') return undefined
+  try {
+    return store.get(key)
+  } catch (cause) {
+    const error = new Error('出站配置读取失败：无法确认覆盖层状态')
+    error.code = 'storage-failed'
+    error.cause = cause
+    throw error
+  }
+}
+
 function rawYaml(yamlRows, type) {
   const row = yamlRows instanceof Map ? yamlRows.get(type) : undefined
   const obj = plain(row) ?? {}
@@ -161,13 +180,32 @@ export function createOutboundConfigService({
   const overlayOf = (type) => allowLegacy === true
     ? legacyOverlay(store, type, adminEnabled)
     : (plain(safeGet(store, canonicalKey(type))) ?? {})
-  const baseRawOf = (type) => ({
-    ...rawYaml(yamlRows, type),
-    ...(yamlRows instanceof Map && yamlRows.has(type)
-      ? {}
-      : (plain(resolvedRows instanceof Map ? resolvedRows.get(type) : undefined) ?? {})),
-  })
+  const baseRawOf = (type) => {
+    // v0.14.1（审查项 P1）：resolvedRows 是装配合并快照——composeOutboundChannels 会把
+    // canonical UI 覆盖并进启动快照。若在 YAML 缺行时无条件回退到它，UI 撤销覆盖后快照
+    // 仍会把配置「复活」（raw/describe/channels.test 继续认为渠道已配置）。因此：
+    //   - YAML 有该行 → 只以 YAML 行为基线（无选项行同样算 profile 管理）；
+    //   - YAML 缺行 → 仅当 canonical 覆盖仍存在时才借用启动快照（保留 resolve 默认值，
+    //     Admin 合并视图依赖它）；覆盖一旦撤销即返回空，绝不复活；
+    //   - 没有 yamlRows 的程序化装配 → 保留 resolvedRows 回退（旧调用方兼容）。
+    if (yamlRows instanceof Map) {
+      if (yamlRows.has(type)) return rawYaml(yamlRows, type)
+      if (plain(safeGet(store, canonicalKey(type))) === null) return {}
+      return plain(resolvedRows instanceof Map ? resolvedRows.get(type) : undefined) ?? {}
+    }
+    return plain(resolvedRows instanceof Map ? resolvedRows.get(type) : undefined) ?? {}
+  }
   const rawOf = (type) => ({ ...baseRawOf(type), ...overlayOf(type) })
+  /**
+   * v0.14.1（复审 P2）：baseConfigured 只表达 profile 管理归属；describe.configured 另看
+   * raw 或 source.has(type)。因此 YAML 无选项的 desktop/bell 行在运行时有效时会被视为已配置，
+   * 而无效的远程 type-only 行不会伪装成可测试的渠道。
+   */
+  const isBaseConfigured = (key) => {
+    if (!OUTBOUND.has(key)) return false
+    if (yamlRows instanceof Map) return yamlRows.has(key)
+    return resolvedRows instanceof Map && resolvedRows.has(key)
+  }
   const applyState = new Map()
   const runtimeOf = (type) => {
     try {
@@ -213,6 +251,32 @@ export function createOutboundConfigService({
       const key = String(type ?? '').trim()
       if (!OUTBOUND.has(key)) return null
       return clone(rawOf(key))
+    },
+
+    /**
+     * v0.14.1：该渠道是否由 profile 文件（cordis.patch.yml）配置——UI 只能查看这类
+     * 渠道，关闭属于「改配置文件」而不是改覆盖层。
+     *
+     * 显式传入 yamlRows Map 时，判据就是 YAML 行的存在性（无选项行同样算 profile 管理，
+     * 否则「YAML 写了 desktop 但没写选项」会被 UI 误判成可关闭）。不能把 resolvedRows 当
+     * 判据：装配时 composeOutboundChannels 会把 canonical 覆盖合并进启动快照，UI 启用的
+     * 通道重启后也在 resolvedRows 里，误判会导致它再也关不掉。只有没有 yamlRows 的
+     * 程序化装配才回退到 resolvedRows 基线。纯读取，未知类型 false。
+     */
+    baseConfigured(type) {
+      return isBaseConfigured(String(type ?? '').trim())
+    },
+
+    /**
+     * v0.14.1：是否存在 UI 写入的 canonical 覆盖（纯读取；未知类型 false）。
+     * 读失败必须 fail-closed：抛 storage-failed 而不是当成「没有覆盖」——否则关闭本机
+     * 通知会走 no-op 假成功，而 store 恢复后覆盖仍在（配置复活）。其余读路径继续沿用
+     * safeGet 的降级语义，不扩大行为变更面。
+     */
+    overlayConfigured(type) {
+      const key = String(type ?? '').trim()
+      if (!OUTBOUND.has(key)) return false
+      return plain(strictGet(store, canonicalKey(key))) !== null
     },
 
     save(type, patch) {
@@ -386,7 +450,10 @@ export function createOutboundConfigService({
       const raw = rawOf(key)
       return {
         type: key,
-        configured: Object.keys(raw).length > 0,
+        // 无选项 YAML 可 resolve 成有效运行态；无效远程行和已撤销渠道不补判为 configured。
+        configured: Object.keys(raw).length > 0 || (() => {
+          try { return source.has(key) === true } catch { return false }
+        })(),
         valid: (() => {
           try { resolveCandidate(key, raw); return true } catch { return false }
         })(),

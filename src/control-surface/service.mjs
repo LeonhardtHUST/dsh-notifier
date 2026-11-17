@@ -42,7 +42,8 @@ function summaryOf(channelRows, questionRows, storageStatus = {}) {
   const configured = channelRows.some((row) => row?.notify?.configured === true)
   if (!configured) return {
     status: 'unconfigured',
-    detail: { en: 'No notification channel configured', zh: '尚未配置通知渠道' },
+    // v0.14.1：本地桌面通知也是一等通知方式，文案不再只说「渠道」。
+    detail: { en: 'No notification method configured', zh: '尚未配置任何通知方式' },
   }
   const degraded = channelRows.find((row) => row?.health?.state === 'degraded')
   const inactive = channelRows.find((row) => row?.notify?.configured === true && row?.notify?.active !== true)
@@ -117,6 +118,7 @@ export function createControlSurfaceService({
   storageStatus,
   launchTickets,
   adminLocation,
+  local,
 } = {}) {
   const revisionView = () => {
     const current = revision.current()
@@ -129,7 +131,7 @@ export function createControlSurfaceService({
         const taskRows = tasks.list()
         const questionRows = questions.list()
         const activityRows = activity.list({ limit: 5 })
-        return ok({
+        const value = {
           ...revisionView(),
           summary: summaryOf(channelRows, questionRows, typeof storageStatus === 'function' ? storageStatus() : storageStatus),
           storage: typeof storageStatus === 'function' ? storageStatus() : (storageStatus ?? { readFailed: false }),
@@ -137,7 +139,29 @@ export function createControlSurfaceService({
           tasks: taskRows.slice(0, 5),
           channels: channelRows.filter((row) => row.notify?.configured || row.control?.configured).slice(0, 5),
           activity: activityRows,
-        })
+        }
+        // v0.14.1：本地通知摘要（平台支持 + desktop/bell 开关）。任何异常都只是
+        // 省略该字段——平台探测失败不能拖垮整个 home 投影。
+        try {
+          const localView = typeof local?.get === 'function' ? local.get() : null
+          if (localView !== null && typeof localView === 'object') {
+            value.local = {
+              platform: {
+                os: localView.platform?.os ?? 'other',
+                support: localView.platform?.support ?? 'unsupported',
+              },
+              desktop: {
+                enabled: localView.desktop?.enabled === true,
+                active: localView.desktop?.active === true,
+              },
+              bell: {
+                enabled: localView.bell?.enabled === true,
+                active: localView.bell?.active === true,
+              },
+            }
+          }
+        } catch { /* local projection is optional */ }
+        return ok(value)
       }
 
       if (method === 'surface.wait') {
@@ -207,7 +231,14 @@ export function createControlSurfaceService({
       if (method === 'channels.test') {
         const type = String(payload?.type ?? '')
         const raw = outboundConfig.raw(type)
-        if (raw === null || Object.keys(raw).length === 0) {
+        // v0.14.1（复审 P2）：YAML 无选项行 raw 为空，但渠道确实由 profile 配置并运行。
+        // 只有「raw 为空且 describe 也不认为已配置」才拒绝——绝不误启真正未配置的
+        // 零凭证通道；空 raw 的已配置渠道交给 runChannelTest 用 adapter 默认值 resolve。
+        const desc = (() => {
+          try { return outboundConfig.describe?.(type) ?? null } catch { return null }
+        })()
+        const rawEmpty = raw === null || Object.keys(raw).length === 0
+        if (raw === null || (rawEmpty && desc?.configured !== true)) {
           const error = new Error(`渠道 "${type}" 未配置`)
           error.code = 'not-configured'
           throw error
@@ -226,6 +257,33 @@ export function createControlSurfaceService({
           reason: value.status === 'unknown' ? value.detail : null,
         })
         return ok(value)
+      }
+
+      if (method === 'local.get') {
+        if (typeof local?.get !== 'function') {
+          const error = new Error('本机通知能力不可用')
+          error.code = 'not-supported'
+          throw error
+        }
+        return ok({ ...revisionView(), ...local.get() })
+      }
+
+      if (method === 'local.save') {
+        if (typeof local?.save !== 'function') {
+          const error = new Error('本机通知能力不可用')
+          error.code = 'not-supported'
+          throw error
+        }
+        // local.save 内部复用 outboundConfig 的 validate/resolve/持久化/热替换事务；
+        // 失败时保留 .code，由本层映射成公开错误码（不泄露内部细节）。
+        const result = local.save(payload ?? {})
+        revision.touch('channels')
+        activity.record('configuration', 'local-notification-saved', {
+          channel: String(payload?.type ?? ''),
+          enabled: payload?.enabled === true,
+          hotApplied: result?.applied === true,
+        })
+        return ok(result)
       }
 
       if (method === 'tasks.list') {

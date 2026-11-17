@@ -3,7 +3,7 @@ import { normalizeDeliveryEvidence } from '../delivery-evidence.mjs'
 const SECRETISH = /(?:token|secret|password|credential|authorization|cookie|webhook|chatid|userid|accountid|body|content|message)$/i
 const ALLOWED_DETAIL_KEYS = new Set([
   'channel', 'direction', 'status', 'reason', 'delivered', 'accepted', 'confirmed', 'skipped', 'failed',
-  'saved', 'deleted', 'hotApplied', 'taskRef', 'workspace',
+  'saved', 'deleted', 'enabled', 'hotApplied', 'taskRef', 'workspace',
   'action', 'source', 'count',
 ])
 
@@ -52,6 +52,7 @@ function titleFor(row) {
     'channel-test-failed': { en: `Channel test failed${channel}`, zh: `渠道测试失败${channel}` },
     'channel-saved': { en: `Channel configuration saved${channel}`, zh: `渠道配置已保存${channel}` },
     'channel-removed': { en: `Channel configuration removed${channel}`, zh: `渠道配置已删除${channel}` },
+    'local-notification-saved': { en: `Local notification settings updated${channel}`, zh: `本机通知设置已更新${channel}` },
     'question-settled': { en: 'Question handled', zh: '问题已处理' },
   }
   return map[row.action] ?? { en: row.action, zh: row.action }
