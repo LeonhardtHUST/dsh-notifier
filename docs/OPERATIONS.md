@@ -2,7 +2,7 @@
 
 ## Current release baseline
 
-Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.1** (release candidate; the 0.14.0 tag and GitHub Release remain immutable).
+Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.1** (published 2026-11-18; tag `v0.14.1`, GitHub Release and npm latest complete; OIDC provenance verified against release commit `58507ac`).
 
 The previous upstream release was `dsh-notifier@0.13.1`; its tag and GitHub Release remain immutable history. Real-device/provider evidence remains explicitly open for every line.
 

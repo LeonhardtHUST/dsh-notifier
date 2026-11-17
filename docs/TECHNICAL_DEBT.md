@@ -20,7 +20,7 @@
 - 真机/协议：Telegram 4096 边界、Feishu WS、QQ gateway/按钮 ACK、DingTalk stream、WeChat iLink QR/长轮询、WxPusher 回调、图片/文件 payload 与各 provider 限制。
 - 宿主/桌面：DSH 真实事件装配、已安装 DSH GUI 的 Native 端到端操作、重启读取持久化 overlay。Windows 11 26H2 真机已验证 WinRT toast、空标题/空正文与边界脚本，且不再依赖 BurntToast 模块；桌面 `ask_user` 没有安全宿主接口，不能宣称可用或双端共享。
 - 本机通知与 Native 滚动：`local.get`/`local.save`、canonical 共享覆盖、YAML 托管禁用已由契约测试覆盖。Linux GNOME/KDE 只有 `notify-send`/`gdbus` 契约证据，没有 Linux 桌面真机运行记录；Windows 的 NotifyIcon 气球回落无法控制静音，约 3 秒后消失。当前 DSH GUI 直接用浏览器访问需要认证，因此没有做「已安装新 UI」的端到端验证；scroll 修复是在真实浏览器复刻 host `main` slot 固定高度几何下验证的。
-- 发布：npm `0.14.0` 已发布并通过 registry 元数据校验；`0.14.1` 仍要求 disposable profile 的 registry 安装、Native UI、一次出站 Hot Apply 与至少一条入站路径 smoke。
+- 发布：npm `0.14.1` 的 OIDC、provenance、registry tarball 完整性和隔离解包 import smoke 已完成；真实 profile 安装、Native UI、出站 Hot Apply 与入站路径 smoke 仍需设备证据。
 
 ## 维护规则
 

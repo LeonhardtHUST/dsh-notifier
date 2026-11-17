@@ -4,7 +4,7 @@
 
 ## 任务状态 type:state
 
-- 当前主题分支 `codex/desktop-notify-scroll`，基线 `815d49f`；目标版本 `0.14.1`，尚待提交推送及正式发布验证。
+- `0.14.1` 已发布。不可变 tag `v0.14.1` 指向 `58507ac`；npm latest、GitHub Release、OIDC provenance 与 registry tarball 已核对。topic/dev/main 在发布提交后仅补文档证据，运行中的 DSH profile 未改动。
 - 已实现 Native 面板滚动、本机/远程通知入口分离、Windows 10/11 WinRT Toast、Linux notify-send/gdbus 回落。
 - `local.get`/`local.save` 复用 canonical 出站事务；YAML 管理不能从 UI 关闭。撤销不会被启动快照复活；来源读失败报 storage-failed。
 - `engines.dsh` 仍为精确 `0.2.2-rc.3`；无新增强制运行时依赖，无新增监听器或认证模式。
@@ -26,9 +26,9 @@
 
 ## 发布与下一步 type:progress
 
-1. 完成最终全量与 release/host/channel-matrix/payload 门禁。
-2. 将 reviewed topic fast-forward 到 fork `dev`，再到 `main`；只 push `origin`，不写 upstream。
-3. GitHub Release workflow 使用 npm OIDC；仓库变量 `NPM_AUTO_PUBLISH=true` 已实查。检查 CI、npm latest、provenance、不可变 tag，再创建 GitHub Release。
-4. Linux GNOME/KDE 只有契约证据；NotifyIcon 回落无法控制静音；真实 IM/provider 投递与已认证 Desktop UI 仍待补证。
+- CI `44129363178`：Ubuntu/macOS Node 22 全部通过。Release `44130646586`：验证和 OIDC 完成；npm 处理延迟导致首次后置校验失败，registry 可见后仅重跑失败 job，最终成功且未重复发布。
+- Registry tarball 322 文件，SHA-512 与本地 pack 相同；SLSA statement 指向维护 fork 与 `58507ac1e295165c02ba73caa83b6da47a20806e`。
+- 提交：`dc7106c` 平台通知、`d788898` Native 面板、`9819e90` 使用文档、`58507ac` 发布元数据。
+- 下一步：更新实际 Desktop profile 后，在「通知与控制 → 桌面通知」测试；Linux GNOME/KDE、已认证 Native UI 端到端与真实 IM/provider 仍待补证。
 
 工程入口：AGENTS、docs/KNOWLEDGE_BASE、docs/memory。运行时以 src/test 为准，版本以 package.json 为准。文档/记忆工具未暴露时使用 tracked docs/memory 和 workstream 留存事实。

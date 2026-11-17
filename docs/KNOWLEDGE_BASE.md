@@ -2,11 +2,11 @@
 
 这是人类和 agent 的导航页。每个问题尽量只指向一个权威来源；运行时真相仍是 `src/` 与 `test/`，版本真相是 `package.json`。
 
-> 当前工作线：`@leonhardthust/dsh-notifier@0.14.1` 正在准备发布；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 发布链已配置。目标宿主为 DSH `0.2.2-rc.3`，Windows 11 26H2 桌面 Toast 已实测，Linux 与已认证 Native UI 端到端证据仍单独记录。
+> 当前工作线：`@leonhardthust/dsh-notifier@0.14.1` 已发布；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 发布链已配置。目标宿主为 DSH `0.2.2-rc.3`，Windows 11 26H2 桌面 Toast 已实测，Linux 与已认证 Native UI 端到端证据仍单独记录。
 
 ## 当前基线
 
-- 当前发布线：**0.14.1**（包版本字段 `0.14.1`，正在准备 fork `main` 发布）：Native 面板滚动、本机/远程通知分离、Windows 原生 Toast、Linux freedesktop 回落和本机配置 fail-closed 已完成；上一版 `0.14.0` 的 tag/Release/npm 记录保留。
+- 当前发布线：**0.14.1**（tag `v0.14.1` / npm latest / GitHub Release 已完成，OIDC provenance 对应 `58507ac`）：Native 面板滚动、本机/远程通知分离、Windows 原生 Toast、Linux freedesktop 回落和本机配置 fail-closed 已完成；上一版 `0.14.0` 的 tag/Release/npm 记录保留。
 - 当前测试：`2137`（2137 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，Node test 并发上限4）。历史 v0.14.0 为 `2084`，v0.13.1 为 `2011`；v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`。
 - 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`dev` 做开发、`main` 做发布；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `dev` 的审查 PR。
 - 生态收录：v0.13.1 已发布；Awesome DSH / dshfind 的公开描述刷新是发布后的外部同步步骤，不影响仓内版本事实。
