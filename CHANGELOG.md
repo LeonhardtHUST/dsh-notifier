@@ -12,7 +12,7 @@
 - 新增 `local.presence.report` / `local.policy.save` Native RPC。Web 端只上报窗口可见与焦点（焦点证据）；桌面壳额外用定时器长间隙上报「刚唤醒」。策略持久化在独立 state key `local:remote-suppression`，默认 focus/unlock/wake 全开。
 - 自动事件通知命中策略时，`notifyAll` 保留本地 desktop/bell、跳过远程渠道，`suppressed` 数组进入通知账本与活动审计。抑制只在目标里确实存在 desktop 时发生；桌面通知未启用或该次路由没命中 desktop 时，远程发送与旧版一致。
 - 不伪造 OS 解锁能力：web 声明 unlock/wake 会被 `local.presence.report` 以 bad-request 拒绝；unlock 策略只在客户端显式声明能力后生效（当前 DSH Desktop 渲染层没有系统锁屏桥，面板明确说明该项暂不可用）。Native 面板新增中英文抑制设置、当前抑制状态与能力说明。
-- 测试：新增 presence 策略/证据契约、notify 远程过滤、local/service RPC 与 client UI 回归，覆盖「desktop 未启用不改变远程发送」的 fail-closed 前提。
+- 测试：新增 presence 策略/证据契约、notify 远程过滤、local/service RPC 与 client UI 回归，覆盖「desktop 未启用不改变远程发送」的 fail-closed 前提；桌面发送失败时自动恢复被抑制的远程目标，自动动作卡也遵守抑制策略。
 
 ### 桌面通知
 

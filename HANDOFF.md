@@ -19,13 +19,13 @@
 - 新增 `local.presence.report` / `local.policy.save` Native RPC；策略持久化在独立 state key `local:remote-suppression`，默认 focus/unlock/wake 全开。
 - 事件自动通知命中策略时保留本机 desktop/bell、跳过远程；只有目标里存在 desktop 才抑制，桌面通知未启用时远程发送不变。
 - Web 只上报窗口可见/焦点；unlock 必须由客户端显式声明能力（当前 DSH Desktop 渲染层没有系统锁屏桥，面板明示该项暂不生效）；唤醒由主机 timer gap 与桌面壳长间隙上报。
-- 回归：`npm test` **2167/2167**（隔离 `DSH_HOME`，并发 4）；详见 `.agents/workstreams/local-remote-suppression.md`。提交见 `git log --oneline -1`。
+- 回归：`npm test` **2175/2175**（隔离 `DSH_HOME`，并发 4）；远程兜底、动作卡抑制、presence 投影和焦点浮层生命周期审查问题已修复。详见 `.agents/workstreams/local-remote-suppression.md`。
 
 ## 当前开发线：通知来源标题（未发布）type:progress
 
 - `intentToMessage` 接受可选 session，自动通知标题使用 `titlePrefix [workspace] 原标题`；工作区名限制为 48 码点，无工作区时使用 8 码点 session id，无来源时兼容旧标题。所有自动事件和动作卡片共用此路径，主动 `notify` 标题/正文不变。
 - 标签去除换行、控制字符和方向字符，将方括号转为圆括号；`minimal` 模式先脱敏再按码点截断。恶意标签、空工作区、元数据 getter 抛错、中文/英文、emoji 和主动工具隔离均有回归。
-- 已验证 focused **88/88**（event-listener、lang-strings、redact、tool-register）；完整 `npm test` **2175/2175，0 fail，0 skip**（隔离临时 `DSH_HOME`，并发 4）。首次全量仅暴露两条旧英文标题预期，队长补齐后重跑通过。release/host/channel-matrix/syntax 门禁及 `git diff --check` 通过；未改真实 profile，未新增设备投递证据。
+- 已验证 focused **88/88**（event-listener、lang-strings、redact、tool-register）；完整 `npm test` **2175/2175，0 fail，0 skip**（隔离临时 `DSH_HOME`，并发 4）。审查后补充了 desktop 失败远程兜底、动作卡抑制、presence 投影一致性、Web presence 主机边界和浮层基线/timer 生命周期；未改真实 profile，未新增设备投递证据。
 - 实现提交 `78758a1` 已推送维护 fork 的 `codex/desktop-notify-scroll`，task-7 已 complete。范围与审查记录：`.agents/workstreams/notification-source-title.md`；队长仍需收口共享工作树内的英文预期与其他工作流变更。
 
 ## 验证与审查
