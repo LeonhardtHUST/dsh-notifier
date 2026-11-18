@@ -195,10 +195,13 @@ function buildWindowsScript(title, body, aumid, tag, sound) {
   }
   // 静音策略：sound off 时用 <audio silent="true"/>（系统 toast 默认会响提示音）
   const audio = sound ? '' : '<audio silent="true"/>'
-  // WinRT 失败才走 System.Windows.Forms 气球（NotifyIcon）。两点平台事实：
+  // WinRT toast：Show() 正常返回即视为已被系统接收（accepted），不再补固定睡眠——
+  // 早先的 Start-Sleep 300ms 只是让 PowerShell 进程多活 300ms，白白拉长每次发送的可见返回延迟。
+  // WinRT 抛错才走 System.Windows.Forms 气球（NotifyIcon）。两点平台事实：
   //   1) 气球没有音量/静音 API——sound:'never' 在这条回落路径上仍可能发系统默认提示音；
   //   2) 显示 3s 后 Dispose：含 PowerShell 冷启动（实测 ~4s）总耗时 ~7s，仍在 10s 命令
   //      超时内。早先用 8.5s 睡眠，总耗时 ~12s 会被 kill，通知已弹出却被误报 TIMEOUT。
+  // 该 3s 等待与 10s 超时保护都保留：只去掉 toast 成功路径上的固定等待。
   return [
     "$ErrorActionPreference='Stop'",
     `$t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${titleB64}'))`,
@@ -217,7 +220,6 @@ function buildWindowsScript(title, body, aumid, tag, sound) {
     "  $toast.Group='dsh-notifier'",
     '  $toast.ExpirationTime=[DateTimeOffset]::Now.AddDays(1)',
     '  [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)',
-    '  Start-Sleep -Milliseconds 300',
     '} catch {',
     '  $err=$_.Exception.Message',
     '  try {',

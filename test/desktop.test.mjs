@@ -181,6 +181,11 @@ test('win32: -EncodedCommand 是 UTF-16LE base64，脚本内用户文本只有 b
   assert.ok(script.includes('$toast.Group=\'dsh-notifier\''))
   assert.ok(script.includes('$toast.ExpirationTime=[DateTimeOffset]::Now.AddDays(1)'))
   assert.ok(script.includes('CreateToastNotifier($appId).Show($toast)'))
+  // 结构守卫：Show 正常返回即视为 accepted，不得再补固定睡眠拖延返回。
+  // 只允许出现 balloon 回落路径里的那一处 3s 睡眠。
+  const sleeps = [...script.matchAll(/Start-Sleep -Milliseconds (\d+)/g)].map((match) => match[1])
+  assert.deepEqual(sleeps, ['3000'], 'WinRT toast 成功路径不得有固定等待')
+  assert.match(script, /Show\(\$toast\)\n\} catch \{/, 'toast Show 之后应直接进入 catch 保护分支')
   // Toast Tag：字符集受限、<=64、每次发送唯一
   const tagOf = (decoded) => decoded.match(/\$toast\.Tag='([^']*)'/)[1]
   const tag = tagOf(script)
@@ -232,7 +237,8 @@ test('win32: balloon 回落脚本在 10s 命令超时内收尾（不会弹了通
   assert.ok(script.includes('Start-Sleep -Milliseconds 3000'))
   assert.ok(script.includes('$icon.Dispose()'))
   assert.ok(!script.includes('8500'), '旧 8.5s 睡眠 + PS 冷启动会超过 10s 命令超时')
-  // 气球也失败时：把 WinRT 原始错误与气球错误一起写 stderr 并 exit 1
+  assert.ok(!/Start-Sleep -Milliseconds 300(?!\d)/.test(script), 'toast Show 后的固定 300ms 等待已移除')
+  // 气球也失败时：把 WinRT 原始错误与气球错误一起写 stderr 并 exit 1 → 上层按 API_ERROR 上报
   assert.ok(script.includes("$err+' / '+$_.Exception.Message"))
   assert.ok(script.includes('exit 1'))
 })

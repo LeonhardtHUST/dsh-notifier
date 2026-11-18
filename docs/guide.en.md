@@ -55,7 +55,7 @@ DSH Sidebar
 
 Desktop notifications stay on this machine and need no account or credentials:
 
-- Windows 10/11: the built-in toast notifications. With DSH desktop installed they appear as DeepSeek Harness. No PowerShell module is needed and nothing is written to the registry.
+- Windows 10/11: the built-in toast notifications. With DSH desktop installed they appear as DeepSeek Harness. No PowerShell module is needed and nothing is written to the registry. Once the toast is handed to the system the send returns without a fixed extra delay; only a system API failure falls back to the legacy balloon tip.
 - Linux: GNOME and KDE Plasma are supported through `notify-send`, falling back to `gdbus`. Other desktop environments get the freedesktop standard path without specific adaptation.
 - macOS: Notification Center via `osascript`.
 

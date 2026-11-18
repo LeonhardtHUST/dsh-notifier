@@ -69,7 +69,7 @@ DSH Sidebar
 
 桌面通知只在本机显示，不需要任何账号或凭证：
 
-- Windows 10/11：系统自带的 Toast 通知，装了 DSH 桌面版时会显示为 DeepSeek Harness。不需要额外安装 PowerShell 模块，也不写注册表。
+- Windows 10/11：系统自带的 Toast 通知，装了 DSH 桌面版时会显示为 DeepSeek Harness。不需要额外安装 PowerShell 模块，也不写注册表。Toast 提交给系统后即返回，不再额外固定等待；只有系统接口报错时才回落到旧式气泡提示。
 - Linux：支持 GNOME 和 KDE Plasma，走 `notify-send`，没有时回落到 `gdbus`。其他桌面环境按 freedesktop 标准尝试，未专门适配。
 - macOS：系统通知中心（`osascript`）。
 

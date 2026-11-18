@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### 桌面通知
+
+- Windows：WinRT Toast 的 `Show()` 返回即视为系统已接受，去掉此前紧随其后的固定 300ms 等待，让单条通知的可见返回更快。回落路径不变：只有 WinRT 抛错才走 NotifyIcon 气球，气球仍显示 3s 后 `Dispose`，整体仍在 10s 命令超时内收尾；`exit 1` 与错误诊断行为保留。
+- 新增结构守卫：`test/desktop.test.mjs` 断言 toast 成功路径不再出现固定等待，且脚本中唯一的 `Start-Sleep` 是气球回落里的 3000ms。
+
 ## [0.14.1] - 2026-11-18
 
 ### 桌面通知与 Native 面板
