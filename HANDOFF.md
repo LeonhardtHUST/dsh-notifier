@@ -15,8 +15,8 @@
 
 - `intentToMessage` 接受可选 session，自动通知标题使用 `titlePrefix [workspace] 原标题`；工作区名限制为 48 码点，无工作区时使用 8 码点 session id，无来源时兼容旧标题。所有自动事件和动作卡片共用此路径，主动 `notify` 标题/正文不变。
 - 标签去除换行、控制字符和方向字符，将方括号转为圆括号；`minimal` 模式先脱敏再按码点截断。恶意标签、空工作区、元数据 getter 抛错、中文/英文、emoji 和主动工具隔离均有回归。
-- 已验证 focused **79/79**；完整 `npm test` **2175 tests，2174 pass，1 fail，0 skip**。唯一失败是范围外 `test/lang-strings.test.mjs:159,165` 仍断言无 `[ws]` 的旧英文标题；需队长更新这两条预期后重跑。release/host/channel-matrix/syntax 门禁通过；未改真实 profile，未新增设备投递证据。
-- 范围与审查记录：`.agents/workstreams/notification-source-title.md`。当前提交待完成，任务板保留阻塞说明，不把未通过的全量回归标为完成。
+- 已验证 focused **88/88**（event-listener、lang-strings、redact、tool-register）；完整 `npm test` **2175/2175，0 fail，0 skip**（隔离临时 `DSH_HOME`，并发 4）。首次全量仅暴露两条旧英文标题预期，队长补齐后重跑通过。release/host/channel-matrix/syntax 门禁及 `git diff --check` 通过；未改真实 profile，未新增设备投递证据。
+- 实现提交 `78758a1` 已推送维护 fork 的 `codex/desktop-notify-scroll`，task-7 已 complete。范围与审查记录：`.agents/workstreams/notification-source-title.md`；队长仍需收口共享工作树内的英文预期与其他工作流变更。
 
 ## 验证与审查
 
