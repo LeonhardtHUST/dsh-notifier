@@ -4,12 +4,12 @@
 
 ## 任务状态 type:state
 
-- `0.14.1` 已发布。不可变 tag `v0.14.1` 指向 `58507ac`；npm latest、GitHub Release、OIDC provenance 与 registry tarball 已核对。topic/dev/main 在发布提交后仅补文档证据，运行中的 DSH profile 未改动。
+- `0.14.2` 待发布；通知偏好、来源标签、焦点浮层、远程抑制和 Windows Toast 延迟修复已集成。`0.14.1` 不可变 tag 仍指向 `58507ac`；npm latest、GitHub Release、OIDC provenance 与 registry tarball 已核对。
 - 已实现 Native 面板滚动、本机/远程通知入口分离、Windows 10/11 WinRT Toast、Linux notify-send/gdbus 回落。
 - `local.get`/`local.save` 复用 canonical 出站事务；YAML 管理不能从 UI 关闭。撤销不会被启动快照复活；来源读失败报 storage-failed。
 - `engines.dsh` 仍为精确 `0.2.2-rc.3`；无新增强制运行时依赖，无新增监听器或认证模式。
 
-| 测试 | `npm test` **2137 tests**（2137 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
+| 测试 | `npm test` **2175 tests**（2175 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
 
 ## 当前开发线：通知来源与远程抑制（未发布）type:progress
 

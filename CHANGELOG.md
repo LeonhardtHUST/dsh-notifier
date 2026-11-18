@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.2] - 2026-11-18
+
+### 通知偏好与来源追踪
+
+- Subagent 自动通知默认只保留主 agent；可通过 `events.subagents` 选择 `root-only`、`all` 或 `off`。
+- Native UI 新增窗口焦点、唤醒和远程通知抑制设置；焦点时提供右上角轻量浮层，不调用系统通知；桌面失败时恢复远程渠道兜底。
+- 自动通知标题标注来源工作区或 session，经过清理、脱敏和长度限制；主动 `notify` 标题保持兼容。
+- Windows Toast 成功路径移除额外 300ms 等待，缩短测试通知返回时间。
+
+### 验证
+
+- `npm test`：2175 tests，2175 pass，0 fail，0 skip（隔离临时 `DSH_HOME`）。
+
 ## [Unreleased]
 
 ### 通知可追踪性
