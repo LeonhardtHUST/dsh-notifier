@@ -29,7 +29,7 @@ The package must exist on npm before a trusted publisher can be configured. That
    npm publish --access public --ignore-scripts
    ```
 
-   This bootstrap release has no trusted-publisher provenance. It created `0.14.0` on 2026-11-17. Version `0.14.1` completed the first OIDC/provenance publish on 2026-11-18. npm processing took several minutes; the first immediate registry verification failed, then rerunning the failed job after propagation succeeded without republishing.
+   This bootstrap release has no trusted-publisher provenance. It created `0.14.0` on 2026-11-17. Version `0.14.1` completed the first OIDC/provenance publish on 2026-11-18. Version `0.14.2` is the next staged release; npm staging may require maintainer approval before the workflow can verify its public registry entry. npm processing took several minutes; the first immediate registry verification failed, then rerunning the failed job after propagation succeeded without republishing.
 
 3. Create the immutable annotated tag for the bootstrap version:
 
