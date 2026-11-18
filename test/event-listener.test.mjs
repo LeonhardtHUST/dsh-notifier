@@ -11,6 +11,8 @@ import {
   createTrailingDebounce,
   createEventListener,
 } from '../src/event-listener.mjs'
+import { stringsOf } from '../src/strings.mjs'
+import { registerNotifyTool } from '../src/tool-register.mjs'
 
 test('intentOfSessionEvent: turn/end completed/error', () => {
   const ok = intentOfSessionEvent({ type: 'turn/end', data: { reason: { kind: 'completed' } } })
@@ -49,6 +51,68 @@ test('intentToMessage: 标题前缀 + 正文截断', () => {
   assert.equal(msg.level, 'active')
   const short = intentToMessage({ headline: 'h', detail: 'ok' }, { config: { titlePrefix: '', summaryMaxChars: 100 } })
   assert.equal(short.content, 'ok')
+})
+
+test('intentToMessage: 来源优先 workspace，保留前缀、原始 headline、正文和级别', () => {
+  for (const lang of ['zh', 'en']) {
+    const intent = intentOfSessionEvent({ type: 'turn/end', data: { reason: { kind: 'completed' } } }, stringsOf(lang))
+    const msg = intentToMessage(intent, {
+      session: { id: 'session-123456', header: { cwd: '/tmp/项目 workspace' } },
+      assistantText: 'done', config: { titlePrefix: ' [DSH] ', lang },
+    })
+    assert.equal(msg.title, `[DSH] [项目 workspace] ${intent.headline}`)
+    assert.equal(msg.content, 'done')
+    assert.equal(msg.level, 'active')
+  }
+  assert.equal(intentToMessage({ headline: 'h', detail: 'body' }, {
+    session: { id: 'same-workspace-name', header: { cwd: '/tmp/same-workspace-name' } },
+  }).title, '[same-workspace-name] h', 'workspace 与 id 同名时仍优先完整 workspace')
+})
+
+test('intentToMessage: 无 workspace 回落 8 码点 session id；无来源保持旧标题', () => {
+  const intent = { headline: 'headline', detail: 'body', level: 'active' }
+  for (const cwd of [undefined, '', '/', '   ', '\n\u202e']) {
+    assert.equal(intentToMessage(intent, { session: { id: 'session-123456', header: { cwd } } }).title, '[session-] headline')
+  }
+  assert.equal(intentToMessage(intent, { session: { id: 123456789 } }).title, '[12345678] headline')
+  for (const session of [undefined, null, {}, { id: '', header: { cwd: '/' } }, { id: '\n', header: { cwd: ' ' } }]) {
+    assert.equal(intentToMessage(intent, { session }).title, 'headline')
+  }
+})
+
+test('intentToMessage: 来源标签清理换行、控制字符、方向字符与方括号', () => {
+  const session = { id: 's1', header: { cwd: '/tmp/evil]\n\t\u0000\u0085\u202e[spoof\u2066 name' } }
+  const msg = intentToMessage({ headline: 'headline', detail: 'body' }, { session })
+  assert.equal(msg.title, '[evil) (spoof name] headline')
+  assert.doesNotMatch(msg.title, /[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/)
+})
+
+test('intentToMessage: 来源按码点限制到 48，回落 id 到 8；不拆 emoji', () => {
+  const intent = { headline: 'headline', detail: 'body' }
+  const workspace = '🚀'.repeat(60)
+  const msg = intentToMessage(intent, { session: { id: 's1', header: { cwd: `/tmp/${workspace}` } } })
+  assert.equal(msg.title, `[${'🚀'.repeat(47)}…] headline`)
+  assert.equal(msg.title.isWellFormed(), true)
+  assert.equal(intentToMessage(intent, { session: { id: '🚀'.repeat(12) } }).title, `[${'🚀'.repeat(8)}] headline`)
+  assert.equal(intentToMessage(intent, { session: { header: { cwd: '/tmp/bad\ud800name' } } }).title, '[bad\ufffdname] headline')
+})
+
+test('intentToMessage: 新来源遵循 minimal 脱敏且先打码后截断', () => {
+  const intent = { headline: 'headline', detail: 'body' }
+  const token = `sk-${'x'.repeat(80)}`
+  const session = { id: 's1', header: { cwd: `/tmp/project-${token}` } }
+  assert.equal(intentToMessage(intent, { session }).title, '[project-***] headline')
+  assert.equal(intentToMessage(intent, { session, config: { redaction: 'extended' } }).title, `[${`project-${token}`.slice(0, 47)}…] headline`)
+  assert.equal(intentToMessage(intent, { session: { id: token } }).title, '[***] headline')
+})
+
+test('intentToMessage: 来源元数据读取失败或非法 id 不阻断通知', () => {
+  const intent = { headline: 'headline', detail: 'body' }
+  const session = { id: 'session-123456', get header() { throw new Error('metadata unavailable') } }
+  assert.equal(intentToMessage(intent, { session }).title, '[session-] headline')
+  const unreadable = { get id() { throw new Error('id unavailable') } }
+  assert.equal(intentToMessage(intent, { session: unreadable }).title, 'headline')
+  assert.equal(intentToMessage(intent, { session: { id: { toString() { throw new Error('invalid id') } } } }).title, 'headline')
 })
 
 test('assistantTextOf 提取单条 assistant/message 的文本块', () => {
@@ -141,6 +205,46 @@ function fakeCtx(listeners = {}) {
 function makeSession(id = 's1', events = []) {
   return { id, header: { cwd: '/tmp/ws' }, events }
 }
+
+test('createEventListener: turn/start、turn/end、approval 与 agent/error 都携带各自来源', async () => {
+  const { ctx, listeners } = fakeCtx()
+  const pushes = []
+  const notifier = { notifyAll: async (msg) => { pushes.push(msg); return { ok: true } }, flush: async () => {} }
+  const dispose = createEventListener(ctx, notifier, {
+    enabled: true, debounceMs: 60000, titlePrefix: '[DSH]', events: { turnStart: { enabled: true } },
+  })
+  listeners['session/event'][0]({ id: 'start', header: { cwd: '/tmp/start-ws' } }, { type: 'turn/start', seq: 1 })
+  listeners['session/event'][0]({ id: 'end', header: { cwd: '/tmp/end-ws' } }, { type: 'turn/end', seq: 1, data: { reason: { kind: 'completed' } } })
+  listeners['session/event'][0]({ id: 'approval', header: { cwd: '/tmp/approval-ws' } }, { type: 'approval/asked', seq: 1, data: {} })
+  listeners['agent/error'][0]({ agent: { id: 'agent', session: { id: 'session-error-id' } }, error: 'boom' })
+  listeners['agent/error'][0]({ agent: { id: 'no-session' }, error: 'boom' })
+  await dispose()
+  assert.deepEqual(pushes.map((msg) => msg.title), [
+    '[DSH] [approval-ws] 🔐 需要你批准',
+    '[DSH] [session-] ❌ Agent 执行出错',
+    '[DSH] ❌ Agent 执行出错',
+    '[DSH] [start-ws] 🚀 任务开始',
+    '[DSH] [end-ws] ✅ 任务完成',
+  ])
+})
+
+test('notify 工具主动消息即使带来源会话也保留调用者标题和正文', async () => {
+  const messages = []
+  let tool
+  registerNotifyTool({ tools: { register(definition) { tool = definition; return () => {} } } }, {
+    channelCount: 1,
+    notify: async (_channel, message) => { messages.push(message); return { ok: true, channel: 'webhook' } },
+    notifyAll: async (message) => { messages.push(message); return { delivered: ['webhook'], failed: [] } },
+  })
+  const context = { session: { id: 'session-id', header: { cwd: '/tmp/ws' } } }
+  for (const channel of [undefined, 'webhook']) {
+    await tool.execute({ title: '调用者标题', message: '调用者正文', channel }, context)
+  }
+  assert.deepEqual(messages, [
+    { title: '调用者标题', content: '调用者正文' },
+    { title: '调用者标题', content: '调用者正文' },
+  ])
+})
 
 test('createEventListener: 默认 root-only 过滤 roots() 已知子 agent，all/off 兼容', async () => {
   const { ctx, listeners } = fakeCtx()
@@ -702,13 +806,13 @@ test('v0.5 stall：timeSensitive 直推 + 文案含 /stop hint；心跳：passiv
   listeners['session/event'][0](session, { type: 'turn/start', seq: 1 })
   t.advance(600_000)
   assert.equal(pushes.length, 1, 'stall 直推（不进宽限窗）')
-  assert.match(pushes[0].title, /疑似卡住/)
+  assert.equal(pushes[0].title, '[ws] ⚠️ 疑似卡住')
   assert.equal(pushes[0].level, 'timeSensitive')
   assert.match(pushes[0].content, /ws \/ sess-sta/)
   assert.match(pushes[0].content, /\/stop 取消/)
   t.advance(300_000)
   assert.equal(pushes.length, 2, '心跳在 15min 首跳（卡住已报不抑制心跳）')
-  assert.match(pushes[1].title, /任务进行中/)
+  assert.equal(pushes[1].title, '[ws] ⏱ 任务进行中')
   assert.equal(pushes[1].level, 'passive')
   assert.match(pushes[1].content, /正在跑长测试/, '心跳附最近输出摘录')
   assert.match(pushes[1].content, /已运行 15m/, '心跳首跳在 firstAfter=15min')
@@ -777,7 +881,8 @@ test('v0.5 动作卡片：stall 触发时对交互通道 mint + sendActionCard�
   assert.equal(minted[0].kind, 'turn/cancel')
   assert.deepEqual(minted[0].payload, { sessionId: 'sess-card-1' })
   assert.equal(cards.length, 1)
-  assert.match(cards[0].title, /疑似卡住/)
+  assert.equal(cards[0].title, '[ws] ⚠️ 疑似卡住')
+  assert.equal(cards[0].title, pushes[0].title, '动作卡与自动广播共享来源标题')
   assert.equal(cards[0].actions[0].label, '⏹ 停止任务')
   assert.match(cards[0].actions[0].data, /^ac:act:turn\/cancel:dead:tok\.sig$/)
   dispose()

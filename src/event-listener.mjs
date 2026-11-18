@@ -137,17 +137,46 @@ export function intentOfAgentError(payload = {}, strings = stringsOf()) {
   return { event: 'agent/error', kind: 'error', headline: strings.agentError.headline, level: 'timeSensitive', detail }
 }
 
+/** 自动通知来源只占一行；剥除控制/方向字符并避免伪造额外的 [来源] 标签。 */
+function titleSourceOf(session, minimal) {
+  const clean = (value) => typeof value === 'string'
+    ? value.toWellFormed()
+      .replace(/[\u0000-\u001F\u007F-\u009F\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, ' ')
+      .replace(/\[/g, '(').replace(/\]/g, ')')
+      .replace(/\s+/gu, ' ').trim()
+    : ''
+  let id = ''
+  let workspace = ''
+  // 宿主元数据不可读时只省略来源，不能让自动通知丢失。
+  try {
+    const value = session?.id
+    if (typeof value === 'string' || typeof value === 'number') id = clean(String(value))
+  } catch { /* 无可用 session id */ }
+  try {
+    const cwd = session?.header?.cwd
+    if (typeof cwd === 'string' && cwd !== '') workspace = clean(workspaceNameOf(session))
+  } catch { /* 回落短 session id */ }
+  const hasWorkspace = workspace !== ''
+  let source = hasWorkspace ? workspace : id
+  // 新增的宿主数据与正文遵循同一脱敏设置，先打码再截断，避免把密钥截成漏网片段。
+  if (minimal) source = maskSecrets(source)
+  const chars = Array.from(source)
+  if (!hasWorkspace) return chars.slice(0, 8).join('')
+  return chars.length > 48 ? `${chars.slice(0, 47).join('')}…` : source
+}
+
 /**
- * 组装最终通知消息：标题前缀 + 正文截断（summaryMaxChars）。
+ * 组装最终通知消息：标题前缀 + 可选来源标签 + 正文截断（summaryMaxChars）。
  * S-05：redaction: 'minimal'（默认）下，宿主会话数据片段（assistantText 摘录 / 错误全文）
  * 先打码密钥形态、摘录压到 MINIMAL_EXCERPT_CHARS（80）；'extended' 维持原行为。
  * 摘录上限只作用于「宿主数据片段」，intent.detail（自家文案）不额外截短——
  * 总正文仍受 summaryMaxChars（默认 500）钳制。
  */
-export function intentToMessage(intent, { assistantText = '', config = {} } = {}) {
+export function intentToMessage(intent, { assistantText = '', config = {}, session } = {}) {
   const prefix = typeof config.titlePrefix === 'string' ? config.titlePrefix.trim() : ''
-  const title = `${prefix.length > 0 ? `${prefix} ` : ''}${intent.headline}`
   const minimal = normalizeRedaction(config.redaction) === 'minimal'
+  const source = titleSourceOf(session, minimal)
+  const title = `${prefix.length > 0 ? `${prefix} ` : ''}${source !== '' ? `[${source}] ` : ''}${intent.headline}`
   let excerpt = assistantText
   if (minimal && excerpt.length > MINIMAL_EXCERPT_CHARS) {
     excerpt = excerpt.slice(-MINIMAL_EXCERPT_CHARS) // 尾沿：结论通常在最后
@@ -496,15 +525,15 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     // 需要 workspace / 运行时长 / 最近输出，intent 纯函数不持有这些，push 侧组装。
     let message
     if (intent.event === 'turn/start') {
-      message = intentToMessage(intent, { assistantText: '', config: resolvedConfig })
+      message = intentToMessage(intent, { assistantText: '', config: resolvedConfig, session })
       message.content = workspaceNameOf(session)
     } else if (intent.event === 'longRunning' || intent.event === 'stall') {
-      message = intentToMessage(intent, { assistantText: '', config: resolvedConfig })
+      message = intentToMessage(intent, { assistantText: '', config: resolvedConfig, session })
       message.content = composeStatusBody(intent, session)
     } else {
       // #32：turn/end 正文取有界缓存（assistant/message 事件到达时沉淀；不再读 session.events）
       const assistantText = intent.event === 'turn/end' ? assistantCache.get(String(session?.id ?? '')) : ''
-      message = intentToMessage(intent, { assistantText, config: resolvedConfig })
+      message = intentToMessage(intent, { assistantText, config: resolvedConfig, session })
     }
     // 关键词规则（include 白名单 / exclude 黑名单，黑名单优先）拦下即静默跳过
     const reason = keywords.why(`${message.title}\n${message.content}`)
