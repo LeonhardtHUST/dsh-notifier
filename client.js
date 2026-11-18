@@ -1236,6 +1236,8 @@ window.__ModuleLoader__.load({
       const t = useT(ctx)
       const [toasts, setToasts] = useState([])
       const seen = useRef(new Set())
+      const toastTimers = useRef(new Map())
+      const toastBaseline = useRef(false)
       const focused = () => {
         try {
           const page = typeof document === 'object' ? document : null
@@ -1249,15 +1251,29 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const rows = Array.isArray(state.home?.activity) ? state.home.activity : []
         if (rows.length === 0) return
+        if (!toastBaseline.current) {
+          rows.forEach(row => { if (row?.id !== undefined) seen.current.add(String(row.id)) })
+          toastBaseline.current = true
+          return
+        }
         const fresh = rows.filter(row => row?.id !== undefined && !seen.current.has(String(row.id)))
         rows.forEach(row => { if (row?.id !== undefined) seen.current.add(String(row.id)) })
         if (seen.current.size > 200) seen.current = new Set(rows.map(row => String(row.id)))
         if (fresh.length === 0 || !focused()) return
         const added = fresh.slice(0, 3).map(row => ({ ...row, toastId: `${row.id}:${Date.now()}:${Math.random()}` }))
         setToasts(current => [...added, ...current].slice(0, 3))
-        const timers = added.map(row => setTimeout(() => setToasts(current => current.filter(item => item.toastId !== row.toastId)), 6000))
-        return () => timers.forEach(clearTimeout)
+        added.forEach(row => {
+          const timer = setTimeout(() => {
+            toastTimers.current.delete(row.toastId)
+            setToasts(current => current.filter(item => item.toastId !== row.toastId))
+          }, 6000)
+          toastTimers.current.set(row.toastId, timer)
+        })
       }, [state.home?.activity])
+      useEffect(() => () => {
+        for (const timer of toastTimers.current.values()) clearTimeout(timer)
+        toastTimers.current.clear()
+      }, [])
       let view
       if (state.view.kind === 'channels') view = h(ChannelsView, { ctx, controller, state, t })
       else if (state.view.kind === 'channel') view = h(ChannelDetailView, { key: state.view.type, ctx, controller, state, t })
