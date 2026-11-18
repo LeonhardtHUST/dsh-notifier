@@ -7,6 +7,13 @@
 - 自动事件通知标题新增来源标签，例如 `[project] ✅ 任务完成`；已有 `titlePrefix` 保留在最前。优先使用工作区名（最多 48 码点），为空时回落到 8 码点 session id；无可用来源时保留原标题。任务开始/结束、审批提醒、Agent 错误、卡住与长任务心跳都使用同一格式，动作卡片同步带上来源。
 - 来源标签清理控制字符、换行、方向字符与方括号，防止来源伪造或挤掉状态标题；`minimal` 模式先脱敏再截断，避免把密钥截成未打码的片段。主动 `notify` 工具的标题和正文不变。
 
+### 远程通知抑制
+
+- 新增 `local.presence.report` / `local.policy.save` Native RPC。Web 端只上报窗口可见与焦点（焦点证据）；桌面壳额外用定时器长间隙上报「刚唤醒」。策略持久化在独立 state key `local:remote-suppression`，默认 focus/unlock/wake 全开。
+- 自动事件通知命中策略时，`notifyAll` 保留本地 desktop/bell、跳过远程渠道，`suppressed` 数组进入通知账本与活动审计。抑制只在目标里确实存在 desktop 时发生；桌面通知未启用或该次路由没命中 desktop 时，远程发送与旧版一致。
+- 不伪造 OS 解锁能力：web 声明 unlock/wake 会被 `local.presence.report` 以 bad-request 拒绝；unlock 策略只在客户端显式声明能力后生效（当前 DSH Desktop 渲染层没有系统锁屏桥，面板明确说明该项暂不可用）。Native 面板新增中英文抑制设置、当前抑制状态与能力说明。
+- 测试：新增 presence 策略/证据契约、notify 远程过滤、local/service RPC 与 client UI 回归，覆盖「desktop 未启用不改变远程发送」的 fail-closed 前提。
+
 ### 桌面通知
 
 - Windows：WinRT Toast 的 `Show()` 返回即视为系统已接受，去掉此前紧随其后的固定 300ms 等待，让单条通知的可见返回更快。回落路径不变：只有 WinRT 抛错才走 NotifyIcon 气球，气球仍显示 3s 后 `Dispose`，整体仍在 10s 命令超时内收尾；`exit 1` 与错误诊断行为保留。

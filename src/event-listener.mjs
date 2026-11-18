@@ -459,6 +459,9 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
    * 「回复 /stop 取消」hint 已是全通道兜底，卡片是增强 UX 而非依赖路径。
    */
   const pushActionCard = (session, message) => {
+    // Presence suppression applies to automatic action cards as well as their text
+    // notification; otherwise a remote Stop button would bypass the de-duplication gate.
+    try { if (typeof notifier?.shouldSuppressRemote === 'function' && notifier.shouldSuppressRemote() === true) return } catch { /* fail open */ }
     const dispatcher = (() => { try { return actionsFn() } catch { return null } })()
     const rawList = (() => { try { return interactiveFn() } catch { return null } })()
     if (dispatcher === null || dispatcher === undefined) return

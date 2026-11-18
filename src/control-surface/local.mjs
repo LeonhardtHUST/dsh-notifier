@@ -64,8 +64,9 @@ function normalizePlatform(value) {
 
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 
-export function createLocalNotificationSurface({ outboundConfig, health, platformInfo } = {}) {
+export function createLocalNotificationSurface({ outboundConfig, health, platformInfo, presence } = {}) {
   const config = outboundConfig
+  const localPresence = presence
 
   const read = (fn, fallback) => {
     try { return typeof fn === 'function' ? fn() : fallback } catch { return fallback }
@@ -157,6 +158,31 @@ export function createLocalNotificationSurface({ outboundConfig, health, platfor
     }
   }
 
+  /**
+   * 远程抑制视图：策略/证据/能力 + 当前是否真正在抑制。
+   * active 只在 desktop 已启用且运行在线时为 true——桌面通知没在跑的时候，
+   * 抑制远程只会让用户彻底收不到通知，这不是用户要的语义。
+   * presence 缺失（旧装配/headless）时返回 null，客户端按钮回退为不可用。
+   */
+  const suppressionOf = () => {
+    if (localPresence === null || typeof localPresence?.view !== 'function') return null
+    let view
+    try {
+      view = localPresence.view()
+    } catch {
+      return null
+    }
+    const desktopEnabled = managedByOf('desktop') !== null
+    const desktopActive = describeOf('desktop').active === true
+    return {
+      policy: view.policy,
+      evidence: view.evidence,
+      capabilities: view.capabilities,
+      active: desktopEnabled && desktopActive && view.suppressing === true,
+      reasons: view.reasons,
+    }
+  }
+
   /** save 的 options 校验与 patch 构造：永远产出非空 patch，使渠道真正变为「已配置」。 */
   const patchOf = (type, options) => {
     const opts = options === undefined || options === null ? {} : options
@@ -175,7 +201,30 @@ export function createLocalNotificationSurface({ outboundConfig, health, platfor
 
   return {
     get() {
-      return { platform: platformView(), desktop: rowOf('desktop'), bell: rowOf('bell') }
+      return {
+        platform: platformView(),
+        desktop: rowOf('desktop'),
+        bell: rowOf('bell'),
+        suppression: suppressionOf(),
+      }
+    },
+
+    /** 持久化远程抑制策略（focus/unlock/wake）。与渠道配置互不影响，热生效。 */
+    savePolicy(patch) {
+      if (localPresence === null || typeof localPresence?.savePolicy !== 'function') {
+        throw notSupported('远程抑制策略不可用')
+      }
+      return localPresence.savePolicy(patch)
+    },
+
+    /** 接收 Native 客户端的本地状态证据；返回最新 suppression 视图。 */
+    reportPresence(payload) {
+      if (localPresence === null || typeof localPresence?.report !== 'function') {
+        throw notSupported('本机 presence 上报不可用')
+      }
+      localPresence.report(payload)
+      const view = suppressionOf()
+      return view === null ? null : { ...view, suppressing: view.active === true }
     },
 
     save(input = {}) {

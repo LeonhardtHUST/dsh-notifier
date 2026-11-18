@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { createOutboundConfigService } from '../src/control-surface/outbound-config.mjs'
 import { createOutboundSource } from '../src/runtime/outbound-source.mjs'
 import { createLocalNotificationSurface, LOCAL_TYPES } from '../src/control-surface/local.mjs'
+import { createLocalPresence } from '../src/control-surface/presence.mjs'
 import { createChannelProjection } from '../src/control-surface/channels.mjs'
 import { createControlSurfaceService } from '../src/control-surface/service.mjs'
 import { createSurfaceRevision } from '../src/control-surface/revision.mjs'
@@ -41,7 +42,7 @@ function memoryStore(initial = {}) {
 }
 
 /** 真实 outbound 配置服务 + 记录调用参数的薄 spy（保留原事务语义，不是纯 mock）。 */
-function setup({ yaml = new Map(), initial = {}, platformInfo } = {}) {
+function setup({ yaml = new Map(), initial = {}, platformInfo, withPresence = false, now } = {}) {
   const store = memoryStore(initial)
   const source = createOutboundSource([])
   const baseConfig = createOutboundConfigService({
@@ -64,8 +65,9 @@ function setup({ yaml = new Map(), initial = {}, platformInfo } = {}) {
     },
   }
   const health = createSurfaceHealth()
-  const local = createLocalNotificationSurface({ outboundConfig: config, health, platformInfo })
-  return { store, source, baseConfig, config, calls, health, local }
+  const presence = withPresence ? createLocalPresence({ store, ...(typeof now === 'function' ? { now } : {}) }) : null
+  const local = createLocalNotificationSurface({ outboundConfig: config, health, platformInfo, presence })
+  return { store, source, baseConfig, config, calls, health, local, presence }
 }
 
 function makeService({ config = {}, local, health = createSurfaceHealth(), channels, revision = createSurfaceRevision(), activity = createSurfaceActivity(), channelTest } = {}) {
@@ -581,4 +583,114 @@ test('service：local.get 抛错时 surface.home 仍成功，只是省略 local'
   assert.equal(home.ok, true)
   assert.equal(Object.prototype.hasOwnProperty.call(home.value, 'local'), false)
   assert.equal(home.value.summary.status, 'unconfigured')
+})
+
+// ---- v0.14.2 远程抑制：策略持久化 + presence + desktop 门 ----
+
+test('local.get：没有 presence 能力时 suppression=null（旧服务/headless 兼容）', () => {
+  const { local } = setup()
+  assert.equal(local.get().suppression, null)
+  assert.throws(() => local.savePolicy({ focus: false }), (error) => error?.code === 'not-supported')
+  assert.throws(() => local.reportPresence({ visible: true, focused: true }), (error) => error?.code === 'not-supported')
+})
+
+test('远程抑制：默认策略全开；desktop 未启用/未活动时 active=false；focus 证据只在 desktop 在线时生效', () => {
+  const { local } = setup({ withPresence: true })
+  const view = local.get()
+  assert.deepEqual(view.suppression.policy, { focus: true, unlock: true, wake: true }, '默认按用户要求开启抑制')
+  assert.deepEqual(view.suppression.capabilities, { focus: false, unlock: false, wake: true }, '未收到报告前不谎报 focus 能力')
+  assert.equal(view.suppression.active, false)
+  assert.deepEqual(view.suppression.evidence, {
+    focus: 'unknown', unlocked: null, wake: false, source: null, at: null,
+  })
+
+  const focus = local.reportPresence({ source: 'web', visible: true, focused: true })
+  assert.equal(focus.suppressing, false, 'desktop 未启用时服务端投影仍不应宣称正在抑制')
+  assert.deepEqual(focus.evidence, { focus: 'focused', unlocked: null, wake: false, source: 'web', at: focus.evidence.at })
+  assert.equal(local.get().suppression.active, false, 'desktop 未启用时不得声称正在抑制')
+
+  // 启用 desktop 后（运行时在线）active 才为 true。
+  local.save({ type: 'desktop', enabled: true })
+  assert.equal(local.get().desktop.active, true)
+  assert.equal(local.get().suppression.active, true)
+  assert.deepEqual(local.get().suppression.reasons, ['focus'])
+})
+
+test('远程抑制：策略持久化到独立 store key，关闭 focus 后立即解除', () => {
+  const { local, store } = setup({ withPresence: true })
+  local.save({ type: 'desktop', enabled: true })
+  local.reportPresence({ source: 'web', visible: true, focused: true })
+  assert.equal(local.get().suppression.active, true)
+
+  const saved = local.savePolicy({ focus: false, wake: false })
+  assert.deepEqual(saved, {
+    saved: true,
+    policy: { focus: false, unlock: true, wake: false },
+    applied: true,
+    applyMode: 'hot',
+  })
+  assert.deepEqual(store.snapshot()['local:remote-suppression'], { focus: false, unlock: true, wake: false })
+  assert.equal(local.get().suppression.active, false, '策略关闭后证据仍在也不得抑制')
+  assert.equal(local.get().suppression.policy.focus, false)
+
+  // 独立 key：不污染 desktop 渠道覆盖。
+  assert.deepEqual(store.snapshot()['channel:desktop:outbound'], { sound: 'auto' })
+})
+
+test('远程抑制：非法策略/证据输入 → bad-request，且不写盘', () => {
+  const { local, store } = setup({ withPresence: true })
+  for (const patch of [{ focus: 'yes' }, { unknown: true }, {}, null]) {
+    assert.throws(() => local.savePolicy(patch), (error) => error?.code === 'bad-request', JSON.stringify(patch))
+  }
+  for (const payload of [null, [], { source: 'web', unlocked: true }, { source: 'web', capabilities: { unlock: true } }]) {
+    assert.throws(() => local.reportPresence(payload), (error) => error?.code === 'bad-request', JSON.stringify(payload))
+  }
+  assert.deepEqual(store.snapshot(), {}, '非法输入不得写盘')
+})
+
+test('service：local.presence.report / local.policy.save 信封、revision 与 activity 语义', async () => {
+  const { config, health, local } = setup({ withPresence: true })
+  const revision = createSurfaceRevision()
+  const activity = createSurfaceActivity()
+  const service = makeService({ config, local, health, revision, activity })
+  local.save({ type: 'desktop', enabled: true })
+  const before = revision.current().revision
+
+  const report = await service.call('local.presence.report', {
+    source: 'web', visible: true, focused: true,
+  })
+  assert.equal(report.ok, true)
+  assert.equal(report.value.suppression.suppressing, true)
+  assert.equal(report.value.suppression.evidence.focus, 'focused')
+  assert.equal(revision.current().revision, before, '周期性 presence 上报不得 touch revision（避免长轮询刷屏）')
+
+  const saved = await service.call('local.policy.save', { focus: false })
+  assert.equal(saved.ok, true)
+  assert.deepEqual(saved.value.policy, { focus: false, unlock: true, wake: true })
+  assert.equal(revision.current().revision, before + 1, '策略变更必须 touch revision')
+  assert.equal(revision.current().topic, 'channels')
+  const configuration = activity.list({ category: 'configuration' })
+  assert.equal(configuration.length, 1)
+  assert.equal(configuration[0].title.zh, '远程抑制设置已更新')
+  assert.equal(configuration[0].title.en, 'Remote suppression settings updated')
+
+  const bad = await service.call('local.presence.report', { source: 'web', unlocked: true })
+  assert.equal(bad.ok, false)
+  assert.equal(bad.error.code, 'dsh-notifier/bad-request')
+
+  const badPolicy = await service.call('local.policy.save', { focus: 'yes' })
+  assert.equal(badPolicy.ok, false)
+  assert.equal(badPolicy.error.code, 'dsh-notifier/bad-request')
+  assert.equal(revision.current().revision, before + 1, '失败不得 touch revision')
+})
+
+test('service：缺少 presence 时 local.* 策略 RPC → not-supported', async () => {
+  const { config, health, local } = setup()
+  const service = makeService({ config, local, health })
+  const report = await service.call('local.presence.report', { visible: true, focused: true })
+  assert.equal(report.ok, false)
+  assert.equal(report.error.code, 'dsh-notifier/not-supported')
+  const policy = await service.call('local.policy.save', { focus: false })
+  assert.equal(policy.ok, false)
+  assert.equal(policy.error.code, 'dsh-notifier/not-supported')
 })

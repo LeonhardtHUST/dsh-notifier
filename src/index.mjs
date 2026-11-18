@@ -7,7 +7,7 @@ import { CHANNEL_TYPES, resolveConfig } from './config.mjs'
 import { composeOutboundChannels, accountOf } from './assembly/outbound.mjs'
 import { resolveAdminToken } from './assembly/admin-token.mjs'
 import { resolveInboundSignals } from './assembly/inbound-signals.mjs'
-import { createNotifier } from './notify.mjs'
+import { createNotifier, createEventNotifier } from './notify.mjs'
 import { createEventListener } from './event-listener.mjs'
 import { registerNotifyTool, registerNotifyTestTool } from './tool-register.mjs'
 import { createLedger, yesterdayWindow } from './ledger.mjs'
@@ -51,6 +51,7 @@ import { createOutboundConfigService } from './control-surface/outbound-config.m
 import { migrateCanonicalChannelConfig } from './control-surface/channel-config-migration.mjs'
 import { createChannelProjection } from './control-surface/channels.mjs'
 import { createLocalNotificationSurface } from './control-surface/local.mjs'
+import { createLocalPresence, createHostWakeProbe } from './control-surface/presence.mjs'
 import { createTaskProjection } from './control-surface/tasks.mjs'
 import { createQuestionProjection } from './control-surface/questions.mjs'
 import { createLaunchTickets } from './control-surface/launch-ticket.mjs'
@@ -303,7 +304,23 @@ export function apply(ctx, config = {}) {
 
   const notifier = createNotifier(ctx, outboundSource, { segment: resolved.segment, routing: resolved.routing, onSend })
 
+  // v0.14.2 远程抑制：本地 presence 证据 + 持久化策略（focus/unlock/wake）。
+  // 事件监听器经 createEventNotifier 包装：策略命中时由 notifyAll 保留本机 desktop、
+  // 跳过远程渠道；desktop 未启用时 notifyAll 原样发送，绝不改变既有远程通知。
+  const localPresence = createLocalPresence({ store })
+  const eventNotifier = createEventNotifier(notifier, () => {
+    const state = localPresence.view()
+    // A browser tab may be remote from the notifier host. Only a Desktop renderer
+    // presence (or host wake evidence) is strong enough to suppress remote delivery.
+    const localEvidence = state.evidence?.source === 'desktop' || state.reasons?.includes('wake')
+    return localEvidence && state.suppressing === true
+  })
+
   const disposers = []
+  // 宿主睡眠/唤醒探测：Node 定时器在挂起期间不触发，恢复后的长间隙就是本地唤醒证据。
+  // 探针 unref，不让 headless 进程被它吊住。
+  const wakeProbe = createHostWakeProbe({ onWake: () => localPresence.markWake() })
+  disposers.push(() => wakeProbe.dispose())
   // Runtime lifecycle changes are revision-visible without conflating them
   // with desired config changes.  Consumers still read the live manager.
   disposers.push(outboundSource.subscribe((event) => {
@@ -406,7 +423,7 @@ export function apply(ctx, config = {}) {
   const questionsForChannels = {
     decide: (payload) => questionsBridge?.decide(payload) ?? { ok: false, message: strings.index.questionsNotReady },
   }
-  disposers.push(createEventListener(ctx, notifier, resolved, {
+  disposers.push(createEventListener(ctx, eventNotifier, resolved, {
     router,
     registry,
     bus: () => busRef,
@@ -786,6 +803,7 @@ export function apply(ctx, config = {}) {
   const surfaceLocal = createLocalNotificationSurface({
     outboundConfig: outboundConfigService,
     health: surfaceHealth,
+    presence: localPresence,
   })
 
   // v0.12 Native Control Surface. Existing projections remain the only authorities.

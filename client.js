@@ -38,6 +38,20 @@ window.__ModuleLoader__.load({
       soundNever: '静音',
       desktopTestAccepted: '已交给系统通知中心。没看到的话，检查系统的勿扰或专注模式。',
       managedByYaml: '由配置文件（cordis.patch.yml）启用，这里不能关闭。',
+      suppressTitle: '远程通知抑制',
+      suppressIntro: '当你在这台电脑前时，只显示本机通知并跳过远程渠道。仅在桌面通知已开启时生效。',
+      suppressFocus: 'DSH 窗口在前台时',
+      suppressFocusHint: '窗口可见并处于焦点。',
+      suppressUnlock: '计算机解锁时',
+      suppressUnlockHint: '需要操作系统提供解锁状态。',
+      suppressUnlockUnsupported: '当前界面无法读取系统解锁状态，此项暂不生效（不会伪造该能力）。',
+      suppressWake: '计算机唤醒后',
+      suppressWakeHint: '唤醒后的 5 分钟内。',
+      suppressWebNote: 'Web 版只能把窗口可见与焦点作为依据。',
+      suppressDesktopOff: '桌面通知未开启：远程发送保持不变。',
+      suppressActive: '正在抑制远程通知',
+      suppressIdle: '远程通知正常发送',
+      suppressUnavailable: '当前服务不支持远程抑制设置。',
       otherLocal: '其他本机提醒',
       bellTitle: '终端响铃',
       bellHint: '只在终端里运行 DSH 时能听到。',
@@ -130,6 +144,20 @@ window.__ModuleLoader__.load({
       soundNever: 'Silent',
       desktopTestAccepted: 'Handed to the system notification center. If nothing appears, check Do Not Disturb / Focus settings.',
       managedByYaml: 'Enabled by configuration (cordis.patch.yml); it cannot be turned off here.',
+      suppressTitle: 'Remote notification suppression',
+      suppressIntro: 'While you are at this computer, show local notifications and skip remote channels. Only applies when desktop notifications are on.',
+      suppressFocus: 'While the DSH window is focused',
+      suppressFocusHint: 'The window is visible and focused.',
+      suppressUnlock: 'While the computer is unlocked',
+      suppressUnlockHint: 'Requires the OS to expose its lock state.',
+      suppressUnlockUnsupported: 'This interface cannot read the OS lock state, so this option has no effect yet (it is not faked).',
+      suppressWake: 'After the computer wakes',
+      suppressWakeHint: 'For 5 minutes after wake.',
+      suppressWebNote: 'The web build can only use window visibility and focus as evidence.',
+      suppressDesktopOff: 'Desktop notifications are off: remote delivery is unchanged.',
+      suppressActive: 'Remote notifications are paused',
+      suppressIdle: 'Remote notifications are active',
+      suppressUnavailable: 'This service does not support remote suppression settings.',
       otherLocal: 'Other local alerts',
       bellTitle: 'Terminal bell',
       bellHint: 'Only audible when DSH runs in a terminal.',
@@ -409,6 +437,38 @@ window.__ModuleLoader__.load({
           setBusy(key, false)
         }
       }
+      /** 远程抑制策略（focus/unlock/wake）持久化；成功后重读 local 视图。 */
+      async function saveSuppressionPolicy(patch) {
+        const key = 'policy'
+        setBusy(key, true)
+        try {
+          const value = await rpc.call('local.policy.save', patch)
+          setError(null)
+          await loadLocal()
+          return value
+        } catch (error) {
+          await loadLocal().catch(() => {})
+          throw error
+        } finally {
+          setBusy(key, false)
+        }
+      }
+      /**
+       * 上报本地 presence 证据（窗口可见/焦点）。尽力而为：presence 只是增强能力，
+       * 失败绝不弹错误横幅、也不影响通知主链路。
+       * Web 版只声明 focus 能力；unlock/wake 不伪造（服务端会拒绝 web 的越界声明）。
+       */
+      async function reportPresence(payload) {
+        try {
+          const value = await rpc.call('local.presence.report', payload)
+          if (value?.suppression && snapshot.local !== null) {
+            emit({ local: { ...snapshot.local, suppression: value.suppression } })
+          }
+          return value
+        } catch {
+          return null
+        }
+      }
       async function testChannel(type) {
         const key = `test:${type}`
         setBusy(key, true)
@@ -510,7 +570,7 @@ window.__ModuleLoader__.load({
         getSnapshot: () => snapshot,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
         loadHome, loadChannels, loadChannel, loadTasks, loadActivity,
-        loadLocal, saveLocal,
+        loadLocal, saveLocal, saveSuppressionPolicy, reportPresence,
         refreshCurrent, saveChannel, testChannel, settleQuestion, createStandaloneLaunch,
         navigate, startWait, setActive, dispose,
         // v0.12.1（P1-09）：视图必须能把业务失败写入统一错误出口。
@@ -935,6 +995,43 @@ window.__ModuleLoader__.load({
         })
       }
       const soundKeys = { auto: 'soundAuto', always: 'soundAlways', never: 'soundNever' }
+      // v0.14.2：远程抑制策略。默认全开（用户要求），但只在桌面通知已启用且
+      // 服务端确认运行在线时才真正抑制；unlock 需要客户端声明 OS 能力，web 永远没有。
+      const suppression = local?.suppression ?? null
+      const policy = suppression?.policy ?? { focus: true, unlock: true, wake: true }
+      const capabilities = suppression?.capabilities ?? { focus: false, unlock: false, wake: false }
+      const policyBusy = state.busy.policy === true
+      const togglePolicy = key => {
+        if (suppression === null || policyBusy) return
+        void controller.saveSuppressionPolicy({ [key]: !(policy[key] === true) })
+          .catch(error => controller.reportError(error))
+      }
+      const policyRow = (key, labelKey, hintKey, disabled = false) => h('div', { className: 'dn-switchRow' },
+        h('div', { className: 'dn-rowMain' },
+          h('strong', { className: 'dn-rowTitle' }, t(labelKey)),
+          h('span', { className: 'dn-rowMeta' }, t(hintKey))),
+        switchButton({
+          checked: policy[key] === true,
+          disabled: local === null || policyBusy || suppression === null || disabled,
+          label: t(labelKey),
+          onToggle: () => togglePolicy(key),
+        }))
+      const suppressionSection = h(Section, { title: t('suppressTitle') },
+        h('p', { className: 'dn-note' }, t('suppressIntro')),
+        suppression === null
+          ? h('p', { className: 'dn-note' }, t('suppressUnavailable'))
+          : h('div', null,
+            suppression.active
+              ? h('p', { className: 'dn-successText', role: 'status' }, t('suppressActive'))
+              : h('p', { className: 'dn-note', role: 'status' }, t('suppressIdle')),
+            !desktopEnabled ? h('p', { className: 'dn-note' }, t('suppressDesktopOff')) : null,
+            policyRow('focus', 'suppressFocus', 'suppressFocusHint'),
+            policyRow('unlock', 'suppressUnlock', 'suppressUnlockHint', capabilities.unlock !== true),
+            capabilities.unlock !== true
+              ? h('p', { className: 'dn-note' }, t('suppressUnlockUnsupported'))
+              : null,
+            policyRow('wake', 'suppressWake', 'suppressWakeHint'),
+            suppression.evidence?.source === 'web' ? h('p', { className: 'dn-note' }, t('suppressWebNote')) : null))
       return h('div', { className: 'dn-page' },
         h('div', { className: 'dn-detailBack' },
           h('button', { className: 'dn-link', onClick: () => controller.navigate({ kind: 'home' }) }, `← ${t('back')}`)),
@@ -982,6 +1079,7 @@ window.__ModuleLoader__.load({
                 ? t('desktopTestAccepted')
                 : `${t('testFailed')}${testResult.detail ? ` · ${resolveText(ctx, testResult.detail)}` : ''}`)
           : null,
+        suppressionSection,
         h(Section, { title: t('otherLocal') },
           h('div', { className: 'dn-switchRow' },
             h('div', { className: 'dn-rowMain' },
@@ -1136,22 +1234,44 @@ window.__ModuleLoader__.load({
     function MainPanel({ controller, ctx }) {
       const state = useController(controller)
       const t = useT(ctx)
+      const [toasts, setToasts] = useState([])
+      const seen = useRef(new Set())
+      const focused = () => {
+        try {
+          const page = typeof document === 'object' ? document : null
+          if (page?.visibilityState === 'hidden') return false
+          return typeof page?.hasFocus !== 'function' || page.hasFocus() === true
+        } catch { return false }
+      }
+      useEffect(() => { controller.startWait() }, [])
+      // 轻量焦点浮层：home.activity 是同一 revision 下的安全、脱敏活动投影。
+      // 页面有焦点时只在右上角提示，不调用系统 Notification；失焦则不在此重复打扰。
       useEffect(() => {
-        controller.startWait()
-      }, [])
+        const rows = Array.isArray(state.home?.activity) ? state.home.activity : []
+        if (rows.length === 0) return
+        const fresh = rows.filter(row => row?.id !== undefined && !seen.current.has(String(row.id)))
+        rows.forEach(row => { if (row?.id !== undefined) seen.current.add(String(row.id)) })
+        if (seen.current.size > 200) seen.current = new Set(rows.map(row => String(row.id)))
+        if (fresh.length === 0 || !focused()) return
+        const added = fresh.slice(0, 3).map(row => ({ ...row, toastId: `${row.id}:${Date.now()}:${Math.random()}` }))
+        setToasts(current => [...added, ...current].slice(0, 3))
+        const timers = added.map(row => setTimeout(() => setToasts(current => current.filter(item => item.toastId !== row.toastId)), 6000))
+        return () => timers.forEach(clearTimeout)
+      }, [state.home?.activity])
       let view
       if (state.view.kind === 'channels') view = h(ChannelsView, { ctx, controller, state, t })
-      // v0.12.1（P1-12）：按渠道类型重建详情组件，避免草稿/测试结果跨渠道串台。
       else if (state.view.kind === 'channel') view = h(ChannelDetailView, { key: state.view.type, ctx, controller, state, t })
       else if (state.view.kind === 'local') view = h(LocalView, { ctx, controller, state, t })
       else if (state.view.kind === 'tasks') view = h(TasksView, { ctx, controller, state, t })
       else if (state.view.kind === 'activity') view = h(ActivityView, { ctx, controller, state, t })
       else view = h(HomeView, { ctx, controller, state, t })
-      // 宿主 main slot 给的是固定高度容器且不自带滚动；滚动必须由页面自己持有。
-      return h('div', {
-        className: 'dn-scroll',
-        key: `${state.view.kind}:${state.view.type ?? ''}`,
-      }, view)
+      const toastView = toasts.length > 0 ? h('div', { className: 'dn-toastStack', 'aria-live': 'polite' },
+        ...toasts.map(row => h('div', { key: row.toastId, className: `dn-toast dn-toast--${row.level || 'info'}`, role: 'status' },
+          h('div', { className: 'dn-toastBody' }, h('strong', null, resolveText(ctx, row.title)), row.detail ? h('span', null, resolveText(ctx, row.detail)) : null),
+          h('button', { type: 'button', className: 'dn-toastClose', 'aria-label': t('toastClose'), onClick: () => setToasts(current => current.filter(item => item.toastId !== row.toastId)) }, '×')))) : null
+      return h('div', { className: 'dn-scroll', key: `${state.view.kind}:${state.view.type ?? ''}` },
+        toastView,
+        view)
     }
 
     function SidebarIcon({ size = 18, active = false }) {
@@ -1198,7 +1318,7 @@ window.__ModuleLoader__.load({
     const CSS = `
       .dn-page{box-sizing:border-box;max-width:960px;margin:0 auto;padding:28px clamp(24px,4vw,48px) 48px;color:var(--dsw-alias-label-primary);font-family:inherit}
       .dn-scroll{box-sizing:border-box;flex:1 1 auto;width:100%;height:100%;max-height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
-      .dn-pageHead{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 28px}
+      .dn-shell{position:relative;box-sizing:border-box;width:100%;height:100%;min-height:0;display:flex;flex-direction:column}.dn-toastStack{position:absolute;z-index:20;top:14px;right:18px;width:min(360px,calc(100% - 36px));display:flex;flex-direction:column;gap:8px;pointer-events:none}.dn-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:0 8px 24px rgba(0,0,0,.16);animation:dnToastIn .18s ease-out}.dn-toastBody{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:19px}.dn-toastBody strong{font-weight:500}.dn-toastBody span{color:var(--dsw-alias-label-secondary);font-size:12px}.dn-toastClose{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:18px;line-height:18px;padding:0 2px;cursor:pointer}@keyframes dnToastIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}.dn-pageHead{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 28px}
       .dn-pageTitle{margin:0;font-size:20px;line-height:28px;font-weight:500}
       .dn-pageIntro{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
       .dn-pageActions,.dn-formActions,.dn-questionActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -1272,6 +1392,59 @@ window.__ModuleLoader__.load({
           page.addEventListener('visibilitychange', onChange)
           return () => page.removeEventListener('visibilitychange', onChange)
         }, 'dsh-notifier: native visibility')
+        // v0.14.2：把窗口可见/焦点作为焦点证据上报给服务端（web 只能给这一种证据；
+        // unlock/wake 不伪造，capabilities 显式为 false）。周期性心跳让 focus 证据
+        // 保持新鲜；页面隐藏后立即上报 away，服务端随即停止抑制。
+        ctx.effect(() => {
+          const page = typeof document === 'object' ? document : null
+          if (page === null || typeof page.addEventListener !== 'function') return
+          const desktop = (() => {
+            try { return typeof globalThis === 'object' && globalThis !== null && 'dshDesktop' in globalThis } catch { return false }
+          })()
+          const send = (extra = {}) => {
+            const visible = page.visibilityState !== 'hidden'
+            let focused = visible
+            try { if (typeof page.hasFocus === 'function') focused = page.hasFocus() === true } catch { /* 焦点探测失败按可见性兜底 */ }
+            const woke = desktop && extra.woke === true
+            void controller.reportPresence({
+              source: desktop ? 'desktop' : 'web',
+              visible,
+              focused,
+              capabilities: { focus: true, unlock: false, wake: woke },
+              ...(woke ? { woke: true } : {}),
+            })
+          }
+          // v0.14.2：把窗口可见/焦点作为焦点证据上报给服务端（web 只能给这一种证据；
+          // unlock 绝不伪造）。定时器在挂起/冻结期间不触发，恢复后的长间隙只在桌面壳
+          // 作为「刚唤醒」证据上报；web 的标签页节流会制造同样的间隙，因此不上报。
+          // 周期心跳让 focus 证据保持新鲜；页面隐藏后立即上报 away，服务端随即停止抑制。
+          send()
+          const view = typeof window === 'object' && window !== null ? window : null
+          let lastTick = Date.now()
+          const timer = setInterval(() => {
+            const nowMs = Date.now()
+            const gap = nowMs - lastTick
+            lastTick = nowMs
+            const woke = desktop && gap > 90_000
+            if (page.visibilityState !== 'hidden' || woke) send(woke ? { woke: true } : {})
+          }, 60_000)
+          const onVisibility = () => send()
+          const onFocus = () => send()
+          const onBlur = () => send()
+          page.addEventListener('visibilitychange', onVisibility)
+          if (view !== null && typeof view.addEventListener === 'function') {
+            view.addEventListener('focus', onFocus)
+            view.addEventListener('blur', onBlur)
+          }
+          return () => {
+            clearInterval(timer)
+            page.removeEventListener('visibilitychange', onVisibility)
+            try {
+              view?.removeEventListener?.('focus', onFocus)
+              view?.removeEventListener?.('blur', onBlur)
+            } catch { /* 反注册失败不致命 */ }
+          }
+        }, 'dsh-notifier: presence reporting')
         ctx.effect(() => () => controller.dispose(), 'dsh-notifier: native controller')
 
         const boundary = child => h(ErrorBoundary, {

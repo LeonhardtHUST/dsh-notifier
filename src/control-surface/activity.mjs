@@ -53,6 +53,7 @@ function titleFor(row) {
     'channel-saved': { en: `Channel configuration saved${channel}`, zh: `渠道配置已保存${channel}` },
     'channel-removed': { en: `Channel configuration removed${channel}`, zh: `渠道配置已删除${channel}` },
     'local-notification-saved': { en: `Local notification settings updated${channel}`, zh: `本机通知设置已更新${channel}` },
+    'local-suppression-saved': { en: 'Remote suppression settings updated', zh: '远程抑制设置已更新' },
     'question-settled': { en: 'Question handled', zh: '问题已处理' },
   }
   return map[row.action] ?? { en: row.action, zh: row.action }

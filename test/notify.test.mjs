@@ -1,13 +1,28 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createNotifier } from '../src/notify.mjs'
-import { resolveConfig } from '../src/config.mjs'
+import { createNotifier, createEventNotifier } from '../src/notify.mjs'
+import { resolveConfig, ADAPTERS } from '../src/config.mjs'
 
 /** 构造一个可注入 fetch 的 webhook 渠道 notifier。 */
 function makeNotifier(channels, logger = { warn() {} }) {
   const resolved = resolveConfig({ channels })
   assert.equal(resolved.skipped.length, 0)
   return createNotifier({ logger }, resolved.channels)
+}
+
+/**
+ * 远程抑制测试用 notifier：真实路由/配置，只把 desktop 适配器换成间谍，
+ * 避免单元测试真的弹系统通知。webhook 仍走测试自己的 fetch stub。
+ */
+function makeSuppressNotifier(channels, desktopCalls = []) {
+  const resolved = resolveConfig({ channels })
+  assert.equal(resolved.skipped.length, 0)
+  return createNotifier({ logger: { warn() {} } }, resolved.channels, {
+    adapters: {
+      ...ADAPTERS,
+      desktop: { send: async () => { desktopCalls.push(1); return { ok: true } } },
+    },
+  })
 }
 
 const WARN = []
@@ -193,6 +208,137 @@ test('flush 等待在途推送完成（headless 退出前送达）', async () =>
     await flushed
     assert.equal(flushResolved, true)
     await promise
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('suppressRemote：desktop 目标存在时只发本机，远程渠道进 suppressed', async () => {
+  const desktopCalls = []
+  const remoteCalls = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    remoteCalls.push(String(url))
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    const notifier = makeSuppressNotifier([
+      webhookChannel('http://remote/hook'),
+      { type: 'desktop', sound: 'never' },
+    ], desktopCalls)
+    const outcome = await notifier.notifyAll({ title: 't', content: 'c' }, { suppressRemote: true })
+    assert.equal(desktopCalls.length, 1, 'desktop 必须继续投递')
+    assert.deepEqual(remoteCalls, [], '远程渠道不得收到请求')
+    assert.deepEqual(outcome.accepted, ['desktop'])
+    assert.deepEqual(outcome.delivered, ['desktop'])
+    assert.deepEqual(outcome.suppressed, ['webhook'])
+    assert.equal(outcome.ok, true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('suppressRemote：没有 desktop 目标时远程发送逐字节不变', async () => {
+  const remoteCalls = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    remoteCalls.push(String(url))
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    const notifier = makeSuppressNotifier([webhookChannel('http://remote/hook')])
+    const outcome = await notifier.notifyAll({ title: 't', content: 'c' }, { suppressRemote: true })
+    assert.deepEqual(remoteCalls, ['http://remote/hook'], 'desktop 未启用时绝不能吞掉远程通知')
+    assert.deepEqual(outcome.accepted, ['webhook'])
+    assert.deepEqual(outcome.suppressed, [])
+    assert.equal(outcome.ok, true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('suppressRemote：只有本地 bell（没有 desktop）同样不抑制远程', async () => {
+  const remoteCalls = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    remoteCalls.push(String(url))
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    const notifier = makeSuppressNotifier([
+      { type: 'bell', count: 1 },
+      webhookChannel('http://remote/hook'),
+    ])
+    const outcome = await notifier.notifyAll({ title: 't', content: 'c' }, { suppressRemote: true })
+    assert.deepEqual(remoteCalls, ['http://remote/hook'])
+    assert.ok(outcome.accepted.includes('webhook'))
+    assert.deepEqual(outcome.suppressed, [], 'bell 不是可见的桌面通知，不能作为抑制前提')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('suppressRemote：quiet 优先，既不发送桌面也不发送远程', async () => {
+  const desktopCalls = []
+  const remoteCalls = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    remoteCalls.push(String(url))
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    const notifier = makeSuppressNotifier([
+      webhookChannel('http://remote/hook'),
+      { type: 'desktop', sound: 'never' },
+    ], desktopCalls)
+    const outcome = await notifier.notifyAll({ title: 't', content: 'c' }, { quiet: true, suppressRemote: true })
+    assert.deepEqual(outcome.skipped, ['(quiet)'])
+    assert.deepEqual(desktopCalls, [])
+    assert.deepEqual(remoteCalls, [])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('createEventNotifier：命中策略时补 suppressRemote，getter 抛错按不抑制处理', async () => {
+  const calls = []
+  const base = {
+    notifyAll(message, options) { calls.push(options); return Promise.resolve({ ok: true }) },
+    flush() { return Promise.resolve() },
+    channels: ['telegram'],
+    channelCount: 1,
+  }
+  const on = createEventNotifier(base, () => true)
+  await on.notifyAll({ title: 't' }, { channelTypes: ['telegram'] })
+  assert.deepEqual(calls[0], { channelTypes: ['telegram'], suppressRemote: true })
+
+  const broken = createEventNotifier(base, () => { throw new Error('presence broke') })
+  await broken.notifyAll({ title: 't' }, { channelTypes: ['telegram'] })
+  assert.deepEqual(calls[1], { channelTypes: ['telegram'] }, 'presence 故障绝不影响通知主链路')
+
+  const off = createEventNotifier(base, () => false)
+  await off.notifyAll({ title: 't' })
+  assert.equal(Object.prototype.hasOwnProperty.call(calls[2], 'suppressRemote'), false)
+  assert.deepEqual(off.channels, ['telegram'])
+  assert.equal(off.channelCount, 1)
+})
+
+test('suppressRemote 的 suppressed 只出现在显式请求抑制的结果与审计里', async () => {
+  const records = []
+  const desktopCalls = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) })
+  try {
+    const resolved = resolveConfig({ channels: [webhookChannel('http://remote/hook'), { type: 'desktop', sound: 'never' }] })
+    const notifier = createNotifier({ logger: { warn() {} } }, resolved.channels, {
+      adapters: { ...ADAPTERS, desktop: { send: async () => { desktopCalls.push(1); return { ok: true } } } },
+      onSend: (record) => records.push(record),
+    })
+    await notifier.notifyAll({ title: 't', content: 'c' })
+    assert.equal(Object.prototype.hasOwnProperty.call(records[0], 'suppressed'), false, '未请求抑制时结果形状不变')
+    await notifier.notifyAll({ title: 't', content: 'c' }, { suppressRemote: true })
+    assert.deepEqual(records[1].suppressed, ['webhook'])
+    assert.equal(desktopCalls.length, 2)
   } finally {
     globalThis.fetch = originalFetch
   }

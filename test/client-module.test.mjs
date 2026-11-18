@@ -50,7 +50,7 @@ function loadModule({ rpcCall } = {}) {
   let source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
   source = source.replace(
     "return {\n      inject: ['slots', 'connection', 'locale', 'layout'],",
-    "return {\n      __test: { createController, launchAdvancedConsole, QuestionCard, TaskRow, ChannelRow, ActivityRow, LocalView, LocalRow, HomeView, ChannelsView, MainPanel, isLocalRow },\n      inject: ['slots', 'connection', 'locale', 'layout'],",
+    "return {\n      __test: { createController, launchAdvancedConsole, QuestionCard, TaskRow, ChannelRow, ActivityRow, LocalView, LocalRow, HomeView, ChannelsView, MainPanel, isLocalRow, zh, en },\n      inject: ['slots', 'connection', 'locale', 'layout'],",
   )
   assert.match(source, /__test:/)
   let registration
@@ -470,4 +470,155 @@ test('static safety invariants remain true', () => {
   assert.match(source, /class ErrorBoundary extends Component/)
   assert.match(source, /data-error-code/)
   assert.match(source, /if \(fields\[key\]\?\.secret === true\) delete nextDirection\[key\]/)
+})
+
+// ---- v0.14.2：远程抑制 UI / presence 上报 ----
+
+test('LocalView renders suppression policy switches and never fakes OS unlock capability', () => {
+  const { mod } = loadModule()
+  const ctx = { locale: { resolveText: value => value } }
+  const t = key => key
+  const saves = []
+  const controller = {
+    loadLocal: async () => {},
+    saveLocal: async () => {},
+    saveSuppressionPolicy: patch => { saves.push(patch); return Promise.resolve({}) },
+    testChannel: async () => ({}),
+    reportError() {},
+    navigate() {},
+  }
+  const local = {
+    platform: { os: 'windows', support: 'supported', detail: '' },
+    desktop: { type: 'desktop', enabled: true, active: true, managedBy: 'ui', sound: 'auto', health: {} },
+    bell: { type: 'bell', enabled: false, active: false, managedBy: null, count: 1, health: {} },
+    suppression: {
+      policy: { focus: true, unlock: true, wake: true },
+      evidence: { focus: 'focused', unlocked: null, wake: false, source: 'web', at: '2026-11-18T00:00:00.000Z' },
+      capabilities: { focus: true, unlock: false, wake: true },
+      active: true,
+      reasons: ['focus'],
+    },
+  }
+  const tree = mod.__test.LocalView({ ctx, controller, t, state: { local, busy: {}, error: null } })
+  const switches = collect(tree, node => node.props?.role === 'switch')
+  const byLabel = label => switches.find(node => node.props['aria-label'] === label)
+
+  assert.equal(byLabel('suppressFocus').props['aria-checked'], 'true')
+  assert.equal(byLabel('suppressFocus').props.disabled, false)
+  assert.equal(byLabel('suppressUnlock').props.disabled, true, 'web 无法读取 OS 解锁状态时不能假装可开启')
+  assert.equal(byLabel('suppressWake').props.disabled, false)
+  assert.match(textOf(tree), /suppressUnlockUnsupported/)
+  assert.match(textOf(tree), /suppressActive/)
+  assert.match(textOf(tree), /suppressWebNote/)
+
+  byLabel('suppressFocus').props.onClick()
+  assert.equal(saves.length, 1)
+  assert.equal(saves[0].focus, false, '点击只提交被切换的字段')
+  assert.deepEqual(Object.keys(saves[0]), ['focus'])
+})
+
+test('LocalView explains suppression when desktop is off and when the server has no presence support', () => {
+  const { mod } = loadModule()
+  const ctx = { locale: { resolveText: value => value } }
+  const t = key => key
+  const controller = {
+    loadLocal: async () => {},
+    saveLocal: async () => {},
+    saveSuppressionPolicy: async () => ({}),
+    testChannel: async () => ({}),
+    reportError() {},
+    navigate() {},
+  }
+  const base = {
+    platform: { os: 'linux', support: 'supported', detail: '' },
+    desktop: { type: 'desktop', enabled: false, active: false, managedBy: null, sound: 'auto', health: {} },
+    bell: { type: 'bell', enabled: false, active: false, managedBy: null, count: 1, health: {} },
+    suppression: {
+      policy: { focus: true, unlock: true, wake: true },
+      evidence: { focus: 'unknown', unlocked: null, wake: false, source: null, at: null },
+      capabilities: { focus: false, unlock: false, wake: true },
+      active: false,
+      reasons: [],
+    },
+  }
+  const offTree = mod.__test.LocalView({ ctx, controller, t, state: { local: base, busy: {}, error: null } })
+  assert.match(textOf(offTree), /suppressDesktopOff/, '桌面通知关闭时必须说明远程发送不受影响')
+  assert.match(textOf(offTree), /suppressIdle/)
+
+  const legacy = { ...base, suppression: null }
+  const legacyTree = mod.__test.LocalView({ ctx, controller, t, state: { local: legacy, busy: {}, error: null } })
+  assert.match(textOf(legacyTree), /suppressUnavailable/)
+  assert.equal(collect(legacyTree, node => node.props?.role === 'switch')
+    .some(node => String(node.props['aria-label']).startsWith('suppress')), false, '旧服务端不得凭空出现抑制开关')
+})
+
+test('controller reports presence and persists suppression policy through dedicated RPCs', async () => {
+  const calls = []
+  const suppression = {
+    policy: { focus: true, unlock: true, wake: true },
+    evidence: { focus: 'focused', unlocked: null, wake: false, source: 'web', at: null },
+    capabilities: { focus: true, unlock: false, wake: true },
+    active: true,
+    reasons: ['focus'],
+  }
+  const { mod, ctx } = loadModule({
+    rpcCall: async (channel, endpoint, payload) => {
+      calls.push({ channel, endpoint, payload })
+      if (endpoint === 'local.get') {
+        return { ok: true, value: { epoch: 'e', revision: 2, desktop: { enabled: true }, bell: {}, suppression } }
+      }
+      if (endpoint === 'local.presence.report') {
+        return { ok: true, value: { epoch: 'e', revision: 2, suppression } }
+      }
+      if (endpoint === 'local.policy.save') {
+        return { ok: true, value: { saved: true, policy: { focus: false, unlock: true, wake: true } } }
+      }
+      return { ok: true, value: { revision: 2 } }
+    },
+  })
+  const controller = mod.__test.createController(ctx)
+  await controller.loadLocal()
+  assert.equal(controller.getSnapshot().local.suppression.active, true)
+
+  const payload = { source: 'web', visible: true, focused: true, capabilities: { focus: true, unlock: false, wake: false } }
+  await controller.reportPresence(payload)
+  const report = calls.find(call => call.endpoint === 'local.presence.report')
+  assert.equal(report.payload.source, 'web')
+  assert.equal(report.payload.visible, true)
+  assert.equal(report.payload.focused, true)
+  assert.deepEqual(Object.keys(report.payload.capabilities).sort(), ['focus', 'unlock', 'wake'])
+  assert.equal(report.payload.capabilities.unlock, false, 'web 不得上报 unlock 能力')
+  assert.equal(controller.getSnapshot().local.suppression.evidence.source, 'web')
+
+  await controller.saveSuppressionPolicy({ focus: false })
+  const save = calls.find(call => call.endpoint === 'local.policy.save')
+  assert.equal(save.payload.focus, false)
+  assert.ok(calls.some(call => call.endpoint === 'local.get'), '保存后重读 local 视图')
+})
+
+test('presence report failures stay silent (no error banner, no throw)', async () => {
+  const { mod, ctx } = loadModule({
+    rpcCall: async (_channel, endpoint) => {
+      if (endpoint === 'local.presence.report') {
+        return { ok: false, error: { code: 'dsh-notifier/bad-request', message: 'bad presence' } }
+      }
+      return { ok: true, value: { revision: 0 } }
+    },
+  })
+  const controller = mod.__test.createController(ctx)
+  assert.equal(await controller.reportPresence({ source: 'web', visible: true, focused: true }), null)
+  assert.equal(controller.getSnapshot().error, null, 'presence 只是增强能力，失败不能污染统一错误出口')
+})
+
+test('suppression UI copy exists in both zh and en dictionaries', () => {
+  const { mod } = loadModule()
+  const zhKeys = Object.keys(mod.__test.zh).sort()
+  const enKeys = Object.keys(mod.__test.en).sort()
+  assert.deepEqual(enKeys, zhKeys, 'zh/en 字典必须同形，避免单边漏译')
+  for (const key of ['suppressTitle', 'suppressIntro', 'suppressFocus', 'suppressUnlock', 'suppressWake', 'suppressActive', 'suppressIdle']) {
+    assert.equal(typeof mod.__test.zh[key], 'string', `zh.${key}`)
+    assert.equal(typeof mod.__test.en[key], 'string', `en.${key}`)
+  }
+  assert.match(mod.__test.zh.suppressIntro, /远程/)
+  assert.match(mod.__test.en.suppressIntro, /remote/)
 })

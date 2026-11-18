@@ -286,6 +286,35 @@ export function createControlSurfaceService({
         return ok(result)
       }
 
+      // v0.14.2：本地 presence 证据（窗口焦点/可见性；unlock/wake 可选且必须声明能力）。
+      // 只更新内存证据，不 touch revision——客户端会周期性上报，不能让长轮询被刷屏。
+      if (method === 'local.presence.report') {
+        if (typeof local?.reportPresence !== 'function') {
+          const error = new Error('本机 presence 上报能力不可用')
+          error.code = 'not-supported'
+          throw error
+        }
+        const suppression = local.reportPresence(payload ?? {})
+        return ok({ ...revisionView(), suppression })
+      }
+
+      // v0.14.2：远程抑制策略（focus/unlock/wake）持久化。策略在不启用桌面通知时
+      // 也不改变远程发送（真正的门在 notifyAll 的 suppressRemote 过滤里）。
+      if (method === 'local.policy.save') {
+        if (typeof local?.savePolicy !== 'function') {
+          const error = new Error('远程抑制策略能力不可用')
+          error.code = 'not-supported'
+          throw error
+        }
+        const result = local.savePolicy(payload ?? {})
+        revision.touch('channels')
+        activity.record('configuration', 'local-suppression-saved', {
+          saved: result?.saved === true,
+          hotApplied: result?.applied === true,
+        })
+        return ok(result)
+      }
+
       if (method === 'tasks.list') {
         return ok({ ...revisionView(), tasks: tasks.list() })
       }

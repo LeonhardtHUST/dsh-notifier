@@ -11,6 +11,16 @@
 
 | 测试 | `npm test` **2137 tests**（2137 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
 
+## 当前开发线：通知来源与远程抑制（未发布）type:progress
+
+- 自动事件通知标题现在带 `[workspace]` 或短 session 标签；来源元数据会清理控制/方向字符、脱敏并按码点截断，主动 `notify` 工具标题保持不变。
+
+
+- 新增 `local.presence.report` / `local.policy.save` Native RPC；策略持久化在独立 state key `local:remote-suppression`，默认 focus/unlock/wake 全开。
+- 事件自动通知命中策略时保留本机 desktop/bell、跳过远程；只有目标里存在 desktop 才抑制，桌面通知未启用时远程发送不变。
+- Web 只上报窗口可见/焦点；unlock 必须由客户端显式声明能力（当前 DSH Desktop 渲染层没有系统锁屏桥，面板明示该项暂不生效）；唤醒由主机 timer gap 与桌面壳长间隙上报。
+- 回归：`npm test` **2167/2167**（隔离 `DSH_HOME`，并发 4）；详见 `.agents/workstreams/local-remote-suppression.md`。提交见 `git log --oneline -1`。
+
 ## 当前开发线：通知来源标题（未发布）type:progress
 
 - `intentToMessage` 接受可选 session，自动通知标题使用 `titlePrefix [workspace] 原标题`；工作区名限制为 48 码点，无工作区时使用 8 码点 session id，无来源时兼容旧标题。所有自动事件和动作卡片共用此路径，主动 `notify` 标题/正文不变。

@@ -7,6 +7,10 @@ import { resolveRouting, routeTargets, retryPolicyOf, sendWithRetry, normalizeLe
 import { sendSegmented } from './inbound/segment.mjs'
 import { isConfirmedReceipt } from './delivery-evidence.mjs'
 
+/** 本地（不出网）通知类型：远程抑制命中时这些目标继续投递。 */
+const LOCAL_CHANNEL_TYPES = Object.freeze(['desktop', 'bell'])
+const LOCAL_TYPES = new Set(LOCAL_CHANNEL_TYPES)
+
 /**
  * 创建一个 notifier：内部持有「已启用渠道」列表。
  * @param ctx - cordis 插件上下文（提供 logger）。
@@ -23,6 +27,10 @@ export function createNotifier(ctx, channels, options = {}) {
   const warn = (...args) => {
     try { logger?.warn?.('[dsh-notifier]', ...args) } catch { /* 日志失败绝不致命 */ }
   }
+  // Test seam only: production always uses the registry. Tests replace a single
+  // local adapter (desktop) so suppression can be exercised without spawning OS
+  // notification processes.
+  const adapters = (options.adapters !== null && typeof options.adapters === 'object') ? options.adapters : ADAPTERS
   const routing = options.routing !== undefined ? resolveRouting(options.routing) : resolveRouting()
   const channelsNow = () => {
     if (channels !== null && typeof channels === 'object' && typeof channels.snapshot === 'function') {
@@ -47,7 +55,7 @@ export function createNotifier(ctx, channels, options = {}) {
 
   /** 包装单渠道发送：分段开启且超预算时切段顺序送达，任一段失败即整体失败。 */
   const sendOne = async (type, config, msg) => {
-    const adapter = ADAPTERS[type]
+    const adapter = adapters[type]
     if (segment.enabled === false) return adapter.send(config, msg)
     let last
     const outcome = await sendSegmented(async (piece) => {
@@ -90,7 +98,7 @@ export function createNotifier(ctx, channels, options = {}) {
     const normalized = normalizeMessage(msg)
     const entry = channelsNow().find((item) => item.type === type)
     if (entry === undefined) {
-      warn(`渠道 "${type || '(空)'}" 未配置，已跳过推送（可用类型：${Object.keys(ADAPTERS).join('/')}）`)
+      warn(`渠道 "${type || '(空)'}" 未配置，已跳过推送（可用类型：${Object.keys(adapters).join('/')}）`)
       const result = channelResult(type || '(空)', 'skipped')
       audit(normalized, { ok: false, accepted: [], confirmed: [], delivered: [], skipped: [`(${result.channel})`], failed: [] }, { source: sendOptions?.source, channel: result.channel })
       return result
@@ -130,7 +138,9 @@ export function createNotifier(ctx, channels, options = {}) {
    *    （未传/非数组 = 不过滤，全量广播——旧调用方零感知）。
    *  - quiet：true = 本次静音——不走任何渠道发送，但仍写通知账本（skipped 标 '(quiet)'）。
    * @param {object} msg - 通知消息（normalizeMessage 归一）。
-   * @param {{ channelTypes?: string[], quiet?: boolean }} [options] - v0.3.2 分流选项。
+   * @param {{ channelTypes?: string[], quiet?: boolean, suppressRemote?: boolean }} [options] - v0.3.2 分流选项。
+   *   - suppressRemote: true 时，若目标中存在 desktop，则丢弃远程目标（保留 desktop/bell）。
+   *     desktop 未命中时保持原样，绝不把用户唯一能收到的远程通知吞掉。
    */
   async function notifyAll(msg, sendOptions = {}) {
     const normalized = normalizeMessage(msg)
@@ -166,6 +176,22 @@ export function createNotifier(ctx, channels, options = {}) {
       audit(normalized, emptyOutcome, { source: sourceExtra.source })
       return emptyOutcome
     }
+    // v0.14.2 远程抑制：用户在本机时（窗口焦点/解锁/唤醒）只保留本地通知。
+    // 关键安全门：只有目标里确实存在 desktop 渠道才丢弃远程目标。desktop 未启用
+    // （或本次路由没命中 desktop）时行为与旧版逐字节一致——绝不因为一个开关
+    // 把用户唯一能收到的远程通知吞掉。
+    const suppressRemote = sendOptions?.suppressRemote === true
+    const suppressed = []
+    let suppressedTargets = []
+    let activeTargets = targets
+    if (suppressRemote && targets.some((target) => target.type === 'desktop')) {
+      const remote = targets.filter((target) => !LOCAL_TYPES.has(target.type))
+      if (remote.length > 0) {
+        activeTargets = targets.filter((target) => LOCAL_TYPES.has(target.type))
+        suppressedTargets = remote
+        for (const target of remote) suppressed.push(target.type)
+      }
+    }
     const accepted = []
     const confirmed = []
     const failed = []
@@ -173,7 +199,7 @@ export function createNotifier(ctx, channels, options = {}) {
     const retry = routing.configured
       ? retryPolicyOf(normalizeLevel(normalized.level), options.retry)
       : { attempts: 1, backoffMs: 0 }
-    const batch = targets.map(async (target) => {
+    const batch = activeTargets.map(async (target) => {
       try {
         const sent = await sendWithRetry(
           () => sendOne(target.type, target.entry.config, target.message),
@@ -190,6 +216,30 @@ export function createNotifier(ctx, channels, options = {}) {
       }
     })
     await track(Promise.all(batch))
+    // If the local desktop path failed, restore suppressed remote targets. The local
+    // presence policy is a de-duplication preference, not permission to lose every
+    // copy of an important notification.
+    if (suppressRemote && suppressedTargets.length > 0 && failed.some((item) => item.channel === 'desktop')) {
+      const fallback = await Promise.all(suppressedTargets.map(async (target) => {
+        try {
+          const sent = await sendWithRetry(
+            () => sendOne(target.type, target.entry.config, target.message),
+            { ...retry, onRetry: (attempt, error) => warn(`渠道 "${target.type}" 远程兜底第 ${attempt} 次失败: ${error instanceof Error ? error.message : String(error)}`) },
+          )
+          accepted.push(target.type)
+          if (confirmedOf(sent)) confirmed.push(target.type)
+          return null
+        } catch (error) {
+          const publicText = error instanceof Error ? (error.publicMessage ?? error.message) : String(error)
+          failed.push({ channel: target.type, error: publicText })
+          return target.type
+        }
+      }))
+      const failedFallback = new Set(fallback.filter(Boolean))
+      for (let i = suppressed.length - 1; i >= 0; i -= 1) {
+        if (!failedFallback.has(suppressed[i])) suppressed.splice(i, 1)
+      }
+    }
     const outcome = {
       ok: failed.length === 0,
       // v0.13（C11.5 / R4）：accepted = provider 已接受请求；confirmed = 有显式回执。
@@ -199,6 +249,8 @@ export function createNotifier(ctx, channels, options = {}) {
       delivered: accepted,
       skipped,
       failed,
+      // 只有显式请求抑制时出现：账本/活动页可解释「为什么只有本机收到」。
+      ...(suppressRemote ? { suppressed } : {}),
     }
     audit(normalized, outcome, { source: sourceExtra.source })
     return outcome
@@ -211,4 +263,33 @@ export function createNotifier(ctx, channels, options = {}) {
     get channelCount() { return channelsNow().length },
     get channels() { return channelsNow().map((entry) => entry.type) },
   }
+}
+
+/**
+ * 给事件监听器用的 notifier 视图：命中本地 presence 抑制策略时，给 notifyAll
+ * 带上 suppressRemote:true。真正的目标过滤与「必须存在 desktop」门在 notifyAll
+ * 内部完成——这个包装器单独不可能吞掉远程通知（desktop 未启用时 notifyAll 原样发送）。
+ *
+ * getter 抛错一律按「不抑制」处理：presence 只是增强能力，绝不能影响通知主链路。
+ * @param {{ notifyAll: Function, flush: Function, channels: string[] }} notifier
+ * @param {() => boolean} [shouldSuppressRemote]
+ */
+export function createEventNotifier(notifier, shouldSuppressRemote) {
+  const suppressed = () => {
+    try {
+      return typeof shouldSuppressRemote === 'function' && shouldSuppressRemote() === true
+    } catch {
+      return false
+    }
+  }
+  return Object.freeze({
+    notifyAll(message, options = {}) {
+      const next = suppressed() ? { ...options, suppressRemote: true } : options
+      return notifier.notifyAll(message, next)
+    },
+    shouldSuppressRemote: suppressed,
+    flush() { return notifier.flush() },
+    get channels() { return notifier.channels },
+    get channelCount() { return notifier.channelCount },
+  })
 }
