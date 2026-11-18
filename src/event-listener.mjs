@@ -286,8 +286,46 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
   const enabled = resolvedConfig.enabled !== false
   // lang 文案表：resolvedConfig.lang 已归一（未知值回落 zh），此处不再兜底
   const strings = stringsOf(resolvedConfig.lang)
-  const events = resolvedConfig.events ?? { turnEnd: { enabled: true, kinds: {} }, approval: true, agentError: true }
+  const events = resolvedConfig.events ?? { turnEnd: { enabled: true, kinds: {} }, approval: true, agentError: true, subagents: 'root-only' }
   const router = wiring.router ?? null
+  // Agent topology is optional across DSH versions. Prefer explicit wiring (useful for
+  // assembly/tests), then the listener context. A missing or malformed roots() API is
+  // deliberately treated as unknown so notifications fail open rather than disappear.
+  const agents = wiring.agents ?? wiring.ctx?.agents ?? ctx?.agents ?? null
+  const subagentMode = events.subagents === 'all' ? 'all' : 'root-only'
+  const rootAgentIds = () => {
+    if (agents === null || typeof agents !== 'object' || typeof agents.roots !== 'function') return null
+    try {
+      const roots = agents.roots()
+      if (roots === null || roots === undefined) return null
+      const values = Array.isArray(roots)
+        ? roots
+        : roots instanceof Map
+          ? [...roots.values()]
+          : typeof roots === 'object' ? Object.values(roots) : null
+      if (values === null) return null
+      const ids = new Set()
+      for (const root of values) {
+        const id = typeof root === 'string' || typeof root === 'number'
+          ? root
+          : root?.id ?? root?.session?.id
+        if (id !== undefined && id !== null) ids.add(String(id))
+      }
+      // An empty/malformed roots result cannot prove an agent is a subagent;
+      // report it as unknown so the notification path remains fail-open.
+      return ids.size > 0 ? ids : null
+    } catch {
+      return null
+    }
+  }
+  const isSubagent = (agentOrSession) => {
+    if (subagentMode === 'all') return false
+    const id = agentOrSession?.id ?? agentOrSession?.session?.id
+    if (id === undefined || id === null) return false
+    const roots = rootAgentIds()
+    if (roots === null) return false
+    return !roots.has(String(id))
+  }
   const registry = wiring.registry ?? null
   const busFn = typeof wiring.bus === 'function' ? wiring.bus : null
   // v0.5 动作闭环（全可选、惰性求值；调用点自带 try/catch + null 判定）
@@ -490,6 +528,7 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
   const sessionListener = (session, event) => {
     if (!enabled) return
     if (session == null || event == null) return
+    if (isSubagent(session)) return
     // v0.5：永远最先喂 tracker（独立于 intent 过滤——events.turnEnd 关闭或未知
     // reason.kind 静默时，turn 生命周期的建档/清档仍需发生，否则卡住判定失真）
     tracker.observe(session, event)
@@ -526,6 +565,7 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     if (!enabled) return
     if (events.agentError === false) return
     const agent = payload.agent
+    if (isSubagent(agent)) return
     const agentId = agent?.id ?? agent?.session?.id
     if (agentId === undefined || agentId === null) return
     const key = `agent:${agentId}:${payload.turn ?? 0}:${payload.step ?? 0}`

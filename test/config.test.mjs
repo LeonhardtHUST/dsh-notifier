@@ -64,6 +64,15 @@ test('enabled: false 顶层开关生效', () => {
   assert.equal(resolved.channels.length, 1)
 })
 
+test('events.subagents 默认 root-only，并兼容 off/all/未知值', () => {
+  assert.equal(resolveConfig({}).events.subagents, 'root-only')
+  assert.equal(resolveConfig({ events: { subagents: 'off' } }).events.subagents, 'off')
+  assert.equal(resolveConfig({ events: { subagents: false } }).events.subagents, 'off')
+  assert.equal(resolveConfig({ events: { subagents: 'all' } }).events.subagents, 'all')
+  assert.equal(resolveConfig({ events: { subagents: true } }).events.subagents, 'all')
+  assert.equal(resolveConfig({ events: { subagents: 'unexpected' } }).events.subagents, 'root-only')
+})
+
 test('debounceMs/summaryMaxChars 默认值与非数值回退', () => {
   assert.equal(resolveConfig({}).debounceMs, 10000)
   assert.equal(resolveConfig({}).summaryMaxChars, 500)

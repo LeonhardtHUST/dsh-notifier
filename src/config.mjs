@@ -264,6 +264,17 @@ export function resolveConfig(config = {}) {
     }
     return out
   }
+  // 子 agent 通知策略：默认只推送根 agent，避免后台 subagent 刷屏。
+  // `off` 与 `all` 是历史配置值，原样保留以便兼容；off 按 root-only 处理，all 放行全部。
+  // 未知值回到安全的 root-only；event-listener 无法判定根/子时 fail-open。
+  const rawSubagents = rawEvents.subagents
+  const subagents = rawSubagents === 'all' || rawSubagents === true
+    ? 'all'
+    : rawSubagents === 'off' || rawSubagents === false
+      ? 'off'
+      : rawSubagents === 'root-only'
+        ? 'root-only'
+        : 'root-only'
   const events = {
     turnEnd: {
       enabled: rawTurnEnd !== false,
@@ -271,6 +282,7 @@ export function resolveConfig(config = {}) {
     },
     approval: rawEvents.approval !== false,
     agentError: rawEvents.agentError !== false,
+    subagents,
     // ---- v0.5 状态上报三键（移动指挥中心）----
     // turnStart 默认关：桌面场景每 turn 一条「任务开始」是噪音；移动场景（发完任务
     // 即离开）建议显式开启。longRunning/stall 默认开：低噪高值（15min+ 长任务心跳 /

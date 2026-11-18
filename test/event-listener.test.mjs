@@ -142,6 +142,43 @@ function makeSession(id = 's1', events = []) {
   return { id, header: { cwd: '/tmp/ws' }, events }
 }
 
+test('createEventListener: 默认 root-only 过滤 roots() 已知子 agent，all/off 兼容', async () => {
+  const { ctx, listeners } = fakeCtx()
+  const pushes = []
+  const notifier = { notifyAll: async (msg) => { pushes.push(msg); return { ok: true } }, flush: async () => {} }
+  const roots = [{ id: 'root' }]
+  ctx.agents = { roots: () => roots }
+  const dispose = createEventListener(ctx, notifier, { enabled: true, debounceMs: 0, summaryMaxChars: 100, titlePrefix: '', events: { subagents: 'root-only' } })
+  const session = makeSession('child')
+  listeners['session/event'][0](session, { type: 'approval/asked', seq: 1, data: {} })
+  assert.equal(pushes.length, 0, 'roots() 已知非根 session 应静默')
+  listeners['session/event'][0](makeSession('root'), { type: 'approval/asked', seq: 2, data: {} })
+  assert.equal(pushes.length, 1, '根 session 应通知')
+  dispose()
+
+  const modes = ['all', 'off']
+  for (const mode of modes) {
+    const rig = fakeCtx()
+    rig.ctx.agents = { roots: () => roots }
+    const delivered = []
+    const cleanup = createEventListener(rig.ctx, { notifyAll: async (msg) => { delivered.push(msg); return { ok: true } }, flush: async () => {} }, { enabled: true, debounceMs: 0, summaryMaxChars: 100, titlePrefix: '', events: { subagents: mode } })
+    rig.listeners['session/event'][0](session, { type: 'approval/asked', seq: 1, data: {} })
+    assert.equal(delivered.length, mode === 'all' ? 1 : 0, `${mode} 兼容策略`) 
+    cleanup()
+  }
+})
+
+test('createEventListener: roots() 不可用时 fail-open 通知', async () => {
+  const { ctx, listeners } = fakeCtx()
+  const pushes = []
+  const notifier = { notifyAll: async (msg) => { pushes.push(msg); return { ok: true } }, flush: async () => {} }
+  ctx.agents = { roots: () => { throw new Error('unsupported') } }
+  const dispose = createEventListener(ctx, notifier, { enabled: true, debounceMs: 0, summaryMaxChars: 100, titlePrefix: '' })
+  listeners['session/event'][0](makeSession('child'), { type: 'approval/asked', seq: 1, data: {} })
+  assert.equal(pushes.length, 1)
+  dispose()
+})
+
 test('createEventListener: turn/end 走防抖，approval/asked 即时，两者都进 notifyAll', async () => {
   const { ctx, listeners } = fakeCtx()
   let pushes = []
