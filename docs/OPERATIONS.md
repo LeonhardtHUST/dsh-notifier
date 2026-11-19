@@ -2,7 +2,7 @@
 
 ## Current release baseline
 
-Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.2** (published 2026-11-18; tag `v0.14.2` points at `128f7f571154219695627013c8016da90d620060`; GitHub Release and npm latest complete; OIDC provenance verified against that release commit).
+Maintained fork: **`@leonhardthust/dsh-notifier`**. See the [release history](https://github.com/LeonhardtHUST/dsh-notifier/releases) and the [npm registry](https://www.npmjs.com/package/@leonhardthust/dsh-notifier) for deployment status.
 
 The `0.14.1` line (tag `v0.14.1`, release commit `58507ac`) and the previous upstream release `dsh-notifier@0.13.1` remain immutable history. Real-device/provider evidence remains explicitly open for every line.
 
@@ -76,7 +76,7 @@ Do not manually edit a live state file while DSH is running.
 
 ### Session notification state
 
-The session notification matrix is in the development tree, not in the published 0.14.2 package. When that build is installed:
+For the session notification matrix (0.15.0+):
 
 - `local:session-notifications` holds the per-category overlay/system/remote rules, the overlay position/animation/stack options, and the mute duration presets.
 - `local:session-mutes` holds active per-session mutes (bounded to 250 rows). A mute with `until: null` is permanent; otherwise it expires at the stored timestamp.
@@ -169,7 +169,7 @@ Before publishing:
 
 The Windows desktop path was exercised on a real Windows 11 26H2 machine (toast, empty title/body, boundary scripts). Linux delivery has contract coverage only; run it once on a GNOME or KDE Plasma desktop before calling it verified. This line did not get an end-to-end run inside the installed DSH GUI because direct browser access to that GUI requires authentication. The Native scroll container was verified in a real browser reproducing the host `main` slot fixed-height geometry; repeat the installed-UI scroll and desktop-notification smoke when an authenticated GUI session is available.
 
-For a development build that includes the session notification policy, also open **Delivery by category**, verify one overlay card and its Session click, then mute that session and confirm overlay, system and remote delivery all stop. That check is not part of the 0.14.2 release evidence.
+For 0.15.0+, also open **Delivery by category**, verify one overlay card and its Session click, then mute that session and confirm overlay, system and remote delivery all stop.
 
 Record unverified real-provider gaps instead of hand-waving them away.
 

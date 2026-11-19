@@ -1,6 +1,6 @@
 {
   "name": "@leonhardthust/dsh-notifier",
-  "version": "0.14.2",
+  "version": "0.15.0",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
@@ -71,7 +71,7 @@
     "verify:release": "node scripts/verify-release.mjs"
   },
   "dshQuality": {
-    "testCount": 2175
+    "testCount": 2231
   },
   "dsh": {
     "bundle": {

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.15.0] - 2026-11-19
+
+DeepSeek Harness 插件设置中的显示名为中文「消息通知」、英文「Notification」。npm 包名、配置键和运行时 ID 保持不变。
+
+### 会话通知策略
+
+- 自动事件统一获得 `sessionId`、`sessionTitle` 和显式类别，由 `src/control-surface/session-notifications.mjs` 单点裁决浮层、系统通知和远程渠道；`src/notify.mjs` 只执行决定，不再保留第二套默认值。消息标题变为「会话标题 · 原标题」，应用内浮层的标题与正文做脱敏和长度限制，标题另清理控制字符。
+- 类别覆盖 `session.started/completed/cancelled/error/status/message/approval/survey` 和 `todo|goal.completed/cancelled/changed/paused`。默认：审批、提问和手动消息为浮层有焦点时、系统和远程始终；普通会话事件与 todo/goal 完成/取消为浮层有焦点时、系统始终、远程跟随在场状态；todo/goal 变更和暂停三处全关。审批与提问不提供远程「跟随在场状态」。
+- 远程「跟随在场状态」只在目标里确实存在桌面通知、本机焦点/唤醒证据成立且 OS 实际接受本地发送时抑制远程目标。桌面发送失败或 Linux action 回执未确认时，仍尝试符合规则的远程目标；静音会阻止兜底。
+- 审批 `asked` 和提问 `tool/call` 延迟 1500ms 再提醒；同 id 的 `approval/decided`、同 callId 的 `tool/result` 或 `user-question-reply` 在窗口内到达即取消。rc.3 限时提问的 `{ pending: true }` 与 `TOOL_OUTCOME_UNKNOWN` 保持等待。
+- 宿主 `todo/write` 是整表快照，没有取消/暂停状态：未完成条目消失推断为取消，`in_progress → pending` 推断为暂停。`goal/change` 的 `complete` 归完成，`clear` 归取消，`pause`/`block` 归暂停，`create`/`edit`/`resume` 归变更；`block` 仍按暂停默认关闭。
+- Native `notifications.get/save/mute` 是已认证连接 RPC，复用现有准入和信封，不增加 HTTP 路由或认证方式。设置与静音分别持久化在 `local:session-notifications`、`local:session-mutes`，写入走共享事务；失败返回 `storage-failed` 并保留旧值。浮层队列为内存态，最多 100 条、90 秒，游标按 revision epoch 校验，旧游标返回空页而不是重放。
+- 会话静音同时屏蔽浮层、系统通知和远程渠道，默认档位 5/10/15/30 分钟与 `always`，可改为最多 8 个 1 到 10080 分钟或 `always` 的不重复值。静音按会话删除已排队浮层；无会话归属的晨报、诊断和广播通知不进入静音列表。
+
+### 浮层与系统动作
+
+- 应用内浮层支持六个位置、六种入场动画、堆叠开关和上下方向；堆叠最多四张，关闭后只留最新一张。顶部使用宿主 `--dsh-frame-overlay-top`（缺失时 20px），底部 20px，宽度上限 380px；`prefers-reduced-motion` 关闭入场动画。点击卡片通过宿主 `uiWorkspace.openSession()` 打开会话，卡片菜单提供配置好的静音档位。
+- Windows 实体 Toast 仅在宿主绑定真实本机回环 Web 服务、且 `http://127.0.0.1:<port>/#dsh-notifier-session=<id>` 精确通过 origin/path/fragment 校验时增加 `protocol` 激活的「打开会话」按钮；没有静音动作，也不创建快捷方式或注册表项。
+- Linux 仅在 `notify-send` 同时支持 `--action` 与 `--wait` 时提供「打开会话」和静音动作；观察器最多 8 个待决进程、单条 60 秒。动作输出不作为送达回执，远程兜底保持；旧版 `notify-send` 与 `gdbus` 回落为纯文本。
+- macOS 只发送文本。已安装 DSH Desktop 只识别 `dsh://open` 来聚焦应用，没有会话级 deep link；这里的「打开会话」是认证后由客户端消费的本机回环 URL，不声称桌面 IPC 或文件直达。
+
+### 验证边界
+
+- 新增策略、RPC、客户端浮层、生命周期映射和桌面动作的聚焦测试；这些测试不能替代真机验证。
+- 现有证据只覆盖契约、协议和宿主载荷核对。Windows Toast 按钮渲染与点击、Linux 通知服务器动作、macOS 通知，以及已认证 DSH Desktop/浏览器中的浮层与会话跳转均未端到端验证。
+- `npm test`：2231 项，2230 通过、0 失败、1 个 Windows symlink 用例跳过（隔离 `DSH_HOME`）。
+
 ## [0.14.2] - 2026-11-18
 
 ### 通知偏好与来源追踪
@@ -28,33 +55,6 @@
 ### 验证
 
 - `npm test`：2175 tests，2175 pass，0 fail，0 skip（隔离临时 `DSH_HOME`）。
-
-## [Unreleased]
-
-以下条目来自开发分支，尚未发布，也不属于 0.14.2 的已发布事实。没有改动已安装 profile，没有推送 npm，也没有新增真机证据。
-
-### 会话通知策略
-
-- 自动事件统一获得 `sessionId`、`sessionTitle` 和显式类别，由 `src/control-surface/session-notifications.mjs` 单点裁决浮层、系统通知和远程渠道；`src/notify.mjs` 只执行决定，不再保留第二套默认值。消息标题变为「会话标题 · 原标题」，标题和正文都做脱敏、控制字符清理和长度限制。
-- 类别覆盖 `session.started/completed/cancelled/error/status/message/approval/survey` 和 `todo|goal.completed/cancelled/changed/paused`。默认：审批、提问和手动消息三处始终；普通会话事件与 todo/goal 完成/取消为浮层有焦点时、系统始终、远程跟随在场状态；todo/goal 变更和暂停三处全关。审批与提问不提供远程「跟随在场状态」。
-- 远程「跟随在场状态」只在目标里确实存在桌面通知、本机焦点/唤醒证据成立且 OS 实际接受本地发送时抑制远程目标。桌面发送失败、被会话静音、Linux action 回执为 `unverified` 或 `suppressed` 时，`notifyAll` 恢复被抑制的远程目标。
-- 审批 `asked` 和提问 `tool/call` 延迟 1500ms 再提醒；同 id 的 `approval/decided`、同 callId 的 `tool/result` 或 `user-question-reply` 在窗口内到达即取消。rc.3 限时提问的 `{ pending: true }` 与 `TOOL_OUTCOME_UNKNOWN` 保持等待。
-- 宿主 `todo/write` 是整表快照，没有取消/暂停状态：未完成条目消失推断为取消，`in_progress → pending` 推断为暂停。`goal/change` 的 `complete` 归完成，`clear` 归取消，`pause`/`block` 归暂停，`create`/`edit`/`resume` 归变更；`block` 仍按暂停默认关闭。
-- Native `notifications.get/save/mute` 是已认证连接 RPC，复用现有准入和信封，不增加 HTTP 路由或认证方式。设置与静音分别持久化在 `local:session-notifications`、`local:session-mutes`，写入走共享事务；失败返回 `storage-failed` 并保留旧值。浮层队列为内存态，最多 100 条、90 秒，游标按 revision epoch 校验，旧游标返回空页而不是重放。
-- 会话静音同时屏蔽浮层、系统通知和远程渠道，默认档位 5/10/15/30 分钟与 `always`，可改为最多 8 个 1 到 10080 分钟或 `always` 的不重复值。静音按会话删除已排队浮层；无会话归属的晨报、诊断和广播通知不进入静音列表。
-
-### 浮层与系统动作
-
-- 应用内浮层支持六个位置、六种入场动画、堆叠开关和上下方向；堆叠最多四张，关闭后只留最新一张。顶部使用宿主 `--dsh-frame-overlay-top`（缺失时 20px），底部 20px，宽度上限 380px；`prefers-reduced-motion` 关闭入场动画。点击卡片通过宿主 `uiWorkspace.openSession()` 打开会话，卡片菜单提供配置好的静音档位。
-- Windows 实体 Toast 仅在宿主绑定真实本机回环 Web 服务、且 `http://127.0.0.1:<port>/#dsh-notifier-session=<id>` 精确通过 origin/path/fragment 校验时增加 `protocol` 激活的「打开会话」按钮；没有静音动作，也不创建快捷方式或注册表项。
-- Linux 仅在 `notify-send` 同时支持 `--action` 与 `--wait` 时提供「打开会话」和静音动作；观察器最多 8 个待决进程、单条 60 秒。动作输出不作为送达回执，远程兜底保持；旧版 `notify-send` 与 `gdbus` 回落为纯文本。
-- macOS 只发送文本。已安装 DSH Desktop 只识别 `dsh://open` 来聚焦应用，没有会话级 deep link；这里的「打开会话」是认证后由客户端消费的本机回环 URL，不声称桌面 IPC 或文件直达。
-
-### 验证边界
-
-- 新增策略、RPC、客户端浮层、生命周期映射和桌面动作的聚焦测试；这些测试不能替代真机验证。
-- 现有证据只覆盖契约、协议和宿主载荷核对。Windows Toast 按钮渲染与点击、Linux 通知服务器动作、macOS 通知，以及已认证 DSH Desktop/浏览器中的浮层与会话跳转均未端到端验证。
-- 本条目不提供新的全量测试数字；发布前仍需运行完整 `npm test` 并记录结果，0.14.2 的 2175 统计保持不变。
 
 ## [0.14.1] - 2026-11-18
 

@@ -82,7 +82,7 @@ Many providers only expose the first signal. If the UI says the provider accepte
 
 ### Session notifications: overlay, system and remote
 
-These controls are in the development tree and are not part of the published 0.14.2 package. Contract and protocol tests cover them; the overlay and system actions have no real-device or authenticated-GUI run yet.
+These controls are available from 0.15.0. In DSH plugin settings the bundle appears as **Notification**. Contract and protocol tests cover them; the overlay and system actions have no real-device or authenticated-GUI run yet.
 
 Open **Notify & Control → Desktop notifications** and use **Delivery by category**. Overlay and System offer Always, When focused, When away and Never. Remote adds Follow presence. System means the local desktop toast and the terminal bell.
 

@@ -25,7 +25,7 @@ Bring DeepSeek Harness to your phone: notifications, approvals, questions, remot
 
 </div>
 
-`@leonhardthust/dsh-notifier@0.14.2` · test/ 2175 tests · 2175 automated contract tests
+`@leonhardthust/dsh-notifier@0.15.0` · test/ 2231 tests · 2231 automated contract tests
 
 ## What it does
 
@@ -91,7 +91,7 @@ If nothing appears, check Do Not Disturb or Focus settings first.
 
 ## Session notifications
 
-Session-scoped events share one delivery policy across the in-app overlay, the operating-system notification, and ordinary remote channels. This work is in the development tree only; the published 0.14.2 package does not contain it. Contract and protocol tests cover the policy, while the overlay, OS actions, and a live DSH Desktop session still need a real-device run.
+Session-scoped events share one delivery policy across the in-app overlay, the operating-system notification, and ordinary remote channels. DSH Settings lists the plugin as **Notification** (消息通知 in Chinese). Contract and protocol tests cover the policy, while the overlay, OS actions, and a live DSH Desktop session still need a real-device run.
 
 The matrix lives under **Notify & Control → Desktop notifications → Delivery by category**. Each category chooses Always, When focused, When away or Never for Overlay and System, and the same choices plus Follow presence for Remote. Approval and question rows do not offer Follow presence.
 

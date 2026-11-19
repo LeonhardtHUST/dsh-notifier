@@ -104,7 +104,7 @@ DSH Sidebar
 
 ### 会话通知：浮层、系统通知和远程渠道
 
-这组策略在开发分支里，尚未随 0.14.2 发布。协议和契约测试已覆盖，浮层和系统按钮还没有真机或已认证 GUI 的端到端记录。
+会话通知策略从 0.15.0 起提供。DSH 插件设置中的名称为「消息通知」。协议和契约测试已覆盖，浮层和系统按钮还没有真机或已认证 GUI 的端到端记录。
 
 打开 **通知与控制 → 桌面通知**，在「通知投递」里按类别选择。浮层和系统通知可选「始终 / 有焦点时 / 离开时 / 不投递」；远程渠道另有「跟随在场状态」。系统通知指本机桌面 Toast 和终端响铃。
 
@@ -130,7 +130,7 @@ DSH Sidebar
 - Linux 的 `notify-send` 支持 `--action` 和 `--wait` 时才提供「打开会话」和配置好的静音档位，最多同时观察 8 个进程、每个 60 秒；动作回执不算送达证据。旧版 `notify-send` 和 `gdbus` 回落只有文本。
 - macOS 只有文本。
 
-已安装的 Desktop 只把 `dsh://open` 用来聚焦应用，没有会话级 deep link。上面的「打开会话」走本机回环 Web URL，由通过认证的客户端处理。设置保存在 `local:session-notifications` 和 `local:session-mutes`，由 Native RPC 读写；不会改动已安装 profile，也没有发布 npm。
+已安装的 Desktop 只把 `dsh://open` 用来聚焦应用，没有会话级 deep link。上面的「打开会话」走本机回环 Web URL，由通过认证的客户端处理。设置保存在 `local:session-notifications` 和 `local:session-mutes`，由 Native RPC 读写；不会改动其他插件配置。
 
 ---
 
