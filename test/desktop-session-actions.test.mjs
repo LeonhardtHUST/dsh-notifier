@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { spawn } from 'node:child_process'
 import { trustedSessionUrl, sessionActions, desktopActionCapabilities, startLinuxActions } from '../src/adapters/desktop-actions.mjs'
-import { buildDesktopCommand } from '../src/adapters/desktop.mjs'
+import { buildDesktopCommand, send, _setSpawnImpl } from '../src/adapters/desktop.mjs'
 
 const options = { sessionId: 'abc', sessionOrigin: 'http://127.0.0.1:29454', sessionUrl: 'http://127.0.0.1:29454/#dsh-notifier-session=abc' }
 const command = buildDesktopCommand('linux', {}, { title: '--evil; $(x)', content: 'body' })
@@ -33,7 +33,7 @@ test('capabilities honestly distinguish conditional Linux callbacks and unsuppor
   assert.equal(desktopActionCapabilities('win32').muteSession, 'unsupported')
   assert.equal(desktopActionCapabilities('linux').muteSession, 'notify-send-actions')
   assert.equal(desktopActionCapabilities('linux').desktopSessionProtocol, false)
-  assert.deepEqual(sessionActions({ ...options, onMute() {}, muteMinutes: [0, 5, 999] }).map((a) => a.id), ['open', 'mute-5'])
+  assert.deepEqual(sessionActions({ ...options, onMute() {}, muteMinutes: [0, 5, 999] }).map((a) => a.id), ['open', 'mute-5', 'mute-999'])
   assert.deepEqual(sessionActions({ sessionId: 'abc', onMute() {} }).map((a) => a.minutes), [5, 10, 15, 30, 'always'])
 })
 
@@ -123,6 +123,65 @@ test('Linux open passes validated URL as literal argv and callback rejection sta
   other.stdout.emit('data', 'mute-always\n'); other.emit('close', 0)
   await tick()
   assert.deepEqual(warnings, ['Desktop notification action failed'])
+})
+
+test('custom minute choices are bounded, deduplicated and retained in configured order', () => {
+  assert.deepEqual(sessionActions({ sessionId: 'abc', onMute() {}, muteMinutes: [60, 60, 2, 'always', 0, -1, 1.5, '5', 10081] }).map((a) => a.minutes), [60, 2, 'always'])
+})
+
+test('muting during CLI probe prevents observer spawn', async () => {
+  let muted = false, spawned = false
+  assert.equal(await startLinuxActions(command, { ...options, isMuted: () => muted }, {
+    run: async () => { muted = true; return { stdout: '--action --wait' } },
+    spawn: () => { spawned = true },
+  }), false)
+  assert.equal(spawned, false)
+})
+
+test('late mute suppresses fallback and mute callback but still permits Open', async () => {
+  for (const action of ['failure', 'mute-5', 'open']) {
+    let muted = false
+    const child = fake(), calls = []
+    await startLinuxActions(command, { ...options, isMuted: () => muted, onMute: (minutes) => calls.push(minutes) }, {
+      run: async (file, args) => { if (args[0] !== '--help') calls.push(file); return { stdout: '--action --wait' } },
+      spawn: () => { queueMicrotask(() => child.emit('spawn')); return child },
+    })
+    muted = true
+    child.stdout.emit('data', `${action}\n`); child.emit('close', action === 'failure' ? 1 : 0)
+    await tick()
+    assert.deepEqual(calls, action === 'open' ? ['xdg-open'] : [])
+  }
+})
+
+test('adapter marks Linux spawn unverified and mute during failed probe suppressed', async () => {
+  const original = process.platform
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+  try {
+    let mode = 'spawn', muted = false
+    const children = []
+    _setSpawnImpl((_file, args) => {
+      const child = fake(); children.push(child)
+      queueMicrotask(() => {
+        child.emit('spawn')
+        if (args[0] === '--help') {
+          if (mode === 'suppress') muted = true
+          child.stdout.emit('data', '--action --wait')
+          child.emit('close', mode === 'suppress' ? 1 : 0)
+        }
+      })
+      return child
+    })
+    assert.deepEqual(await send({}, { title: 'test' }, options), { acceptance: 'unverified' })
+    children.at(-1).emit('close', 0)
+    const before = children.length
+    mode = 'suppress'
+    assert.deepEqual(await send({}, {}, { ...options, isMuted: () => muted }), { acceptance: 'suppressed' })
+    assert.equal(children.length, before + 1)
+    assert.deepEqual(await send({}, {}, { isMuted: () => { throw Error('private') } }), { acceptance: 'suppressed' })
+  } finally {
+    _setSpawnImpl(null)
+    Object.defineProperty(process, 'platform', { value: original, configurable: true })
+  }
 })
 
 test('real subprocess validates action stdout protocol without shell execution', async () => {

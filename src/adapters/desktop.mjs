@@ -42,7 +42,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { NotifyError, ERROR_CODES } from './_shared.mjs'
-import { trustedSessionUrl, sessionActions, desktopActionCapabilities, startLinuxActions } from './desktop-actions.mjs'
+import { trustedSessionUrl, sessionActions, sessionIsMuted, desktopActionCapabilities, startLinuxActions } from './desktop-actions.mjs'
 
 export const type = 'desktop'
 export { desktopActionCapabilities }
@@ -483,8 +483,10 @@ async function aumidFor(resolved) {
 export async function send(resolved, msg, options = {}) {
   const platform = process.platform
   if (msg?.silent === true) return
+  if (sessionIsMuted(options)) return { acceptance: 'suppressed' }
   if (platform === 'win32') {
     const command = buildDesktopCommand(platform, resolved, msg, await aumidFor(resolved), options)
+    if (sessionIsMuted(options)) return { acceptance: 'suppressed' }
     await runCommand(command.file, command.args)
     return
   }
@@ -493,7 +495,8 @@ export async function send(resolved, msg, options = {}) {
     if (sessionActions(options).length > 0 && await startLinuxActions(primary, options, {
       run: runCommand, spawn: spawnImpl,
       warn: (text) => { try { console.error(`[dsh-notifier] ${text}`) } catch { /* diagnostics only */ } },
-    })) return
+    })) return { acceptance: 'unverified' }
+    if (sessionIsMuted(options)) return { acceptance: 'suppressed' }
     try {
       await runCommand(primary.file, primary.args)
       return
@@ -502,6 +505,7 @@ export async function send(resolved, msg, options = {}) {
       if (!(error instanceof NotifyError) || error.code !== ERROR_CODES.NOT_CONFIGURED || error.missing !== 'notify-send') throw error
     }
     const fallback = buildGdbusCommand(resolved, msg)
+    if (sessionIsMuted(options)) return { acceptance: 'suppressed' }
     try {
       await runCommand(fallback.file, fallback.args)
     } catch (error) {

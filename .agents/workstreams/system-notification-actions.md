@@ -16,7 +16,7 @@
 
 Windows Toast adds an explicit protocol-activation Open button. Clicking the notification body retains its existing OS/app behavior and does not promise session navigation. The existing balloon fallback has no actions. Windows Mute and macOS osascript actions remain unsupported; no registration, shortcut, callback HTTP server or mandatory dependency was added.
 
-Linux probes notify-send `--action`/`--wait`, then starts an observer capped at eight pending processes and 60 seconds. Exact single-use stdout action IDs open via literal `xdg-open` argv or invoke the captured session-scoped callback. Configured Mute values are restricted to `[5,10,15,30,'always']`. Old CLIs and saturated observers use existing notification-only delivery; nonzero action CLI exit retries without actions. Notification server button support remains best effort; gdbus fallback has no signal observer/actions.
+Linux probes notify-send `--action`/`--wait`, then starts an observer capped at eight pending processes and 60 seconds. Exact single-use stdout action IDs open via literal `xdg-open` argv or invoke the captured session-scoped callback. Configured Mute values accept integers 1–10080 minutes and `'always'`, at most eight deduplicated choices; defaults remain `[5,10,15,30,'always']`. Old CLIs and saturated observers use existing notification-only delivery; nonzero action CLI exit retries without actions. Notification server button support remains best effort; gdbus fallback has no signal observer/actions.
 
 ## Evidence and validation
 
@@ -28,7 +28,7 @@ Linux probes notify-send `--action`/`--wait`, then starts an observer capped at 
 
 ## Review, cleanup and handoff
 
-Self-review fixed logger exception escape, callback mutation races, late output after timeout, old-CLI fallback and the no-action timer regression. Independent review is pending lead scheduling.
+Self-review fixed logger exception escape, callback mutation races, late output after timeout, old-CLI fallback and the no-action timer regression. Independent review identified spawn-versus-acceptance ambiguity, custom-duration rejection and stale mute state. Follow-up returns `{acceptance:'unverified'}` for the Linux observer path and `{acceptance:'suppressed'}` when fresh state blocks delivery; root must consume both before deduplicating remote delivery. Optional synchronous `options.isMuted()` is rechecked after probes, before fallbacks and before Mute callbacks (Open remains permitted). A throwing/nonboolean guard fails closed. Follow-up focused tests: 49 pass, 0 fail; custom values now match the session service 1–10080 minute/eight-choice contract. Full integration rerun remains lead-owned.
 
 Neat-freak checklist read and scoped inventory completed. Root/docs changes, CHANGELOG and durable risk summary are deferred to lead because this worker owns only four files; no unrelated cleanup or HANDOFF edits. Memory tools are unavailable in this worker toolset; this workstream retains the durable protocol facts.
 

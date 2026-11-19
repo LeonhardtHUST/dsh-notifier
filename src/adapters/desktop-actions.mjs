@@ -28,11 +28,18 @@ export function sessionActions(options = {}) {
   if (url) actions.push({ id: 'open', label: 'Open session', url })
   if (typeof options.sessionId === 'string' && options.sessionId && options.sessionId.length <= 256 && typeof options.onMute === 'function') {
     const requested = Array.isArray(options.muteMinutes) ? options.muteMinutes : MUTE_PRESETS
-    for (const minutes of MUTE_PRESETS) {
-      if (requested.includes(minutes)) actions.push({ id: `mute-${minutes}`, label: minutes === 'always' ? 'Mute this session' : `Mute ${minutes} min`, minutes })
+    for (const minutes of [...new Set(requested)].slice(0, 8)) {
+      if (minutes !== 'always' && (!Number.isInteger(minutes) || minutes < 1 || minutes > 10_080)) continue
+      actions.push({ id: `mute-${minutes}`, label: minutes === 'always' ? 'Mute this session' : `Mute ${minutes} min`, minutes })
     }
   }
   return actions
+}
+
+/** Fresh synchronous session state; errors fail closed without exposing details. */
+export function sessionIsMuted(options) {
+  try { return typeof options?.isMuted === 'function' && options.isMuted() !== false }
+  catch { return true }
 }
 
 export function desktopActionCapabilities(platform) {
@@ -53,13 +60,13 @@ export async function startLinuxActions(command, options, { run, spawn, warn = (
   const actions = sessionActions(options)
   const onMute = options?.onMute
   const report = (text) => { try { warn(text) } catch { /* diagnostics must not escape listeners */ } }
-  if (!actions.length || pending >= MAX_PENDING) return false
+  if (!actions.length || pending >= MAX_PENDING || sessionIsMuted(options)) return false
   try {
     const help = await run('notify-send', ['--help'])
     if (!help.stdout.includes('--action') || !help.stdout.includes('--wait')) return false
   } catch { return false }
   // Recheck after the asynchronous probe to enforce the observer cap under bursts.
-  if (pending >= MAX_PENDING) return false
+  if (pending >= MAX_PENDING || sessionIsMuted(options)) return false
   pending++
   return new Promise((resolve) => {
     let child, timer, done = false, started = false, output = '', overflow = false
@@ -90,7 +97,9 @@ export async function startLinuxActions(command, options, { run, spawn, warn = (
       child.on('close', (code) => {
         if (!finish(code === 0)) return
         if (code !== 0) {
-          if (started) Promise.resolve().then(() => run(command.file, command.args)).catch(() => report('Desktop notification fallback failed'))
+          if (started) Promise.resolve().then(() => {
+            if (!sessionIsMuted(options)) return run(command.file, command.args)
+          }).catch(() => report('Desktop notification fallback failed'))
           return
         }
         if (overflow) return
@@ -98,7 +107,7 @@ export async function startLinuxActions(command, options, { run, spawn, warn = (
         if (!action) return
         Promise.resolve().then(async () => {
           if (action.id === 'open') await run('xdg-open', [action.url])
-          else await onMute(action.minutes)
+          else if (!sessionIsMuted(options)) await onMute(action.minutes)
         }).catch(() => report('Desktop notification action failed'))
       })
     } catch { finish(false) }
