@@ -89,6 +89,42 @@ The Windows path was exercised on a real Windows 11 26H2 desktop, including an e
 
 If nothing appears, check Do Not Disturb or Focus settings first.
 
+## Session notifications
+
+Session-scoped events share one delivery policy across the in-app overlay, the operating-system notification, and ordinary remote channels. This work is in the development tree only; the published 0.14.2 package does not contain it. Contract and protocol tests cover the policy, while the overlay, OS actions, and a live DSH Desktop session still need a real-device run.
+
+The matrix lives under **Notify & Control → Desktop notifications → Delivery by category**. Each category chooses Always, When focused, When away or Never for Overlay and System, and the same choices plus Follow presence for Remote. Approval and question rows do not offer Follow presence.
+
+| Category | Overlay | System | Remote |
+| --- | --- | --- | --- |
+| Approval / question waiting | When focused | Always | Always |
+| Session started / completed / cancelled / error / status | When focused | Always | Follow presence |
+| Manual `notify` message | When focused | Always | Always |
+| Todo / goal completed or cancelled | When focused | Always | Follow presence |
+| Todo / goal changed or paused | Never | Never | Never |
+
+The matrix routes events that the host and the existing `events.*` switches already emit. It does not turn on turn-start notifications or any other event line by itself.
+
+Follow presence is the existing remote-suppression rule: while this computer has focus, remote targets are skipped only when a desktop notification was actually accepted. If the desktop send fails, is blocked by session mute, or returns an unverified Linux action receipt, the suppressed remote targets are sent after all. Approval and question waits default to Always because losing one stalls the agent.
+
+Approval and question events wait 1.5 seconds before they are announced, so a request the host settles immediately (policy `never`, an aborted signal, a quick answer) produces no alert. A timed `ask_user_question` that returns `pending: true` keeps waiting, and the later `user-question-reply` clears the reminder.
+
+Todo and goal events follow the host payloads. The todo list has no cancelled or paused status, so an incomplete item that disappears is reported as cancelled, and an `in_progress` item that returns to `pending` is reported as paused. A goal `clear` is reported as cancelled. `block` is grouped under paused, and paused notifications are off by default.
+
+### Overlay, mute and system actions
+
+The overlay offers six positions, six entrance animations, stacking on/off and an up/down stack direction. Stacked mode holds four cards; with stacking off only the newest card stays. Top placement follows the host's `--dsh-frame-overlay-top` inset (20px fallback), bottom placement uses 20px, and the card column is capped at 380px. Reduced-motion preferences skip the entrance animation. Selecting a card opens its Session; its menu lists the configured mute durations.
+
+Mute applies per session and blocks all three destinations. Defaults are 5, 10, 15, 30 minutes and Always; the list can be replaced with at most eight distinct values, each an integer from 1 to 10080 minutes or `always`. Notifications without a session binding, such as the startup digest, diagnostics and broadcasts, are not affected.
+
+- **Windows**: a physical toast shows **Open session** only when the Host has a bound loopback web server and the exact `http://127.0.0.1:<port>/#dsh-notifier-session=<id>` URL validates. No mute action is offered. Button rendering still needs a real Windows session.
+- **Linux**: when `notify-send` supports `--action` and `--wait`, Open and the configured mute durations become actions. At most eight observers run for 60 seconds each. Action output is not a delivery receipt, so the remote fallback stays. Older `notify-send` builds and the `gdbus` fallback remain text-only.
+- **macOS**: text only.
+
+The installed Desktop app accepts only `dsh://open` to focus itself. It has no session deep link, and no file or IPC route carries one. The Open action above is the loopback web URL, consumed after authentication.
+
+Settings live in `local:session-notifications` and `local:session-mutes`; Native RPC uses `notifications.get`, `notifications.save` and `notifications.mute`. The overlay feed holds 100 items for 90 seconds and rejects stale cursors from another epoch. This branch does not change an installed profile, publish to npm, or add real-device evidence.
+
 ## Pick the mode you need
 
 | I want to… | Start here |

@@ -80,6 +80,36 @@ dsh-notifier distinguishes:
 
 Many providers only expose the first signal. If the UI says the provider accepted the test, verify it on the device.
 
+### Session notifications: overlay, system and remote
+
+These controls are in the development tree and are not part of the published 0.14.2 package. Contract and protocol tests cover them; the overlay and system actions have no real-device or authenticated-GUI run yet.
+
+Open **Notify & Control → Desktop notifications** and use **Delivery by category**. Overlay and System offer Always, When focused, When away and Never. Remote adds Follow presence. System means the local desktop toast and the terminal bell.
+
+| Category | Overlay | System | Remote |
+| --- | --- | --- | --- |
+| Approval / question waiting | When focused | Always | Always |
+| Session started / completed / cancelled / error / status | When focused | Always | Follow presence |
+| Manual `notify` message | When focused | Always | Always |
+| Todo / goal completed or cancelled | When focused | Always | Follow presence |
+| Todo / goal changed or paused | Never | Never | Never |
+
+The matrix routes events that already exist; the existing `events.*` switches still decide whether an event line is emitted.
+
+Follow presence skips remote targets only while this computer has focus and a desktop notification was actually accepted. If the desktop send fails, session mute blocks it, or a Linux action receipt is unverified, the remote targets are sent after all. Approval and question rows cannot use Follow presence because a missed request leaves the agent waiting. If you change their remote mode to When away or Never, the handler returns control to the desktop immediately instead of waiting for a card that will not be sent.
+
+Approval and question events wait 1.5 seconds before they are announced, so a request the host settles immediately does not produce a false alert. A timed question that returns `pending: true` stays waiting until the `user-question-reply`. A todo item that leaves the list counts as cancelled, and `in_progress → pending` counts as paused. A goal `clear` counts as cancelled; `block` is grouped under paused, which is off by default.
+
+The overlay has six positions, six entrance animations, a stacking switch and an up/down direction. Stacking keeps four cards; without stacking only the newest card remains. Top placement follows the host titlebar safe area and bottom placement keeps 20px. Selecting a card opens its Session; its menu lists the mute durations. Mute is per session and blocks the overlay, system notification and remote channels.
+
+System actions differ by platform:
+
+- Windows shows **Open session** on a physical toast only when the Host has a bound loopback web server. It has no mute action, and button rendering still needs a real Windows session.
+- Linux exposes Open and the configured mute durations only when `notify-send` supports `--action` and `--wait`, with at most eight observers running for 60 seconds each. Action output is not delivery evidence. Older `notify-send` builds and the `gdbus` fallback stay text-only.
+- macOS is text only.
+
+The installed Desktop app accepts only `dsh://open` to focus itself and has no session deep link. Open uses the loopback web URL and is handled by the authenticated client. Settings live in `local:session-notifications` and `local:session-mutes` and are read through Native RPC. This branch does not change an installed profile or publish to npm.
+
 ## 3. Understand Hot Apply
 
 Outbound changes are hot-applied:

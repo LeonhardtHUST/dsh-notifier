@@ -2,9 +2,9 @@
 
 ## Current release baseline
 
-Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.1** (published 2026-11-18; tag `v0.14.1`, GitHub Release and npm latest complete; OIDC provenance verified against release commit `58507ac`).
+Maintained fork line: **`@leonhardthust/dsh-notifier` 0.14.2** (published 2026-11-18; tag `v0.14.2` points at `128f7f571154219695627013c8016da90d620060`; GitHub Release and npm latest complete; OIDC provenance verified against that release commit).
 
-The previous upstream release was `dsh-notifier@0.13.1`; its tag and GitHub Release remain immutable history. Real-device/provider evidence remains explicitly open for every line.
+The `0.14.1` line (tag `v0.14.1`, release commit `58507ac`) and the previous upstream release `dsh-notifier@0.13.1` remain immutable history. Real-device/provider evidence remains explicitly open for every line.
 
 Release evidence for the historical upstream v0.13.1 line (2026-09-26):
 
@@ -74,6 +74,18 @@ Read precedence is intentionally compatibility-aware:
 
 Do not manually edit a live state file while DSH is running.
 
+### Session notification state
+
+The session notification matrix is in the development tree, not in the published 0.14.2 package. When that build is installed:
+
+- `local:session-notifications` holds the per-category overlay/system/remote rules, the overlay position/animation/stack options, and the mute duration presets.
+- `local:session-mutes` holds active per-session mutes (bounded to 250 rows). A mute with `until: null` is permanent; otherwise it expires at the stored timestamp.
+- Both keys are written through the shared store transaction. A commit failure surfaces `storage-failed` and the previous value stays authoritative.
+- The overlay feed is in-memory only: 100 items, 90 seconds, and a cursor scoped to the current revision epoch. No feed history is persisted.
+- `notifications.get`, `notifications.save` and `notifications.mute` are Native connection RPC methods. They add no HTTP route, listener or token.
+
+To reset the policy, stop DSH, back up `state.json`, and remove only those two keys. Do not hand-edit a live state file.
+
 ## First-time setup
 
 1. Install the registry package (the original `dsh-notifier` package and this fork must not coexist):
@@ -107,7 +119,7 @@ Recovery address: use the actual `Web 管理台已就绪` startup line; never gu
 
 | Symptom | First checks |
 |---|---|
-| No Native Sidebar entry | package is `0.14.1+`, DSH restarted, Host `0.2.2-rc.3`, client module served |
+| No Native Sidebar entry | package is `0.14.2+`, DSH restarted, Host `0.2.2-rc.3`, client module served |
 | Native panel fails to load | DSH slot/client errors, `client.js` package payload, Connection/webServer control route |
 | No outbound delivery | Channels health, real test result, `channel-selfcheck.mjs`, adapter validation |
 | Saved outbound still uses old credentials | Confirm actual registry version; current line must read the live `OutboundSource` |
@@ -119,6 +131,10 @@ Recovery address: use the actual `Web 管理台已就绪` startup line; never gu
 | Advanced Console unavailable | `admin.enabled`, loopback bind, current port; Native will not auto-enable it |
 | No Windows desktop toast | Windows 10/11, Do Not Disturb / Focus. The WinRT toast path uses PowerShell and needs no BurntToast module; the NotifyIcon balloon fallback has no audio control |
 | No Linux desktop notification | graphical session, `notify-send` (libnotify) or `gdbus` (glib2); GNOME/KDE supported, other desktops best effort. This line has no Linux real-machine evidence |
+| No in-app overlay | That category is set to Never; the window is hidden or unfocused while the mode is Focused; the Native panel is not loaded. Check the category matrix and overlay position |
+| Remote stays quiet while you are at the computer | Follow presence is active. Choose Always for that category if you want remote copies anyway; approval and survey rows cannot use Follow presence |
+| Open session missing on an OS notification | Windows needs a bound loopback web server; Linux needs `notify-send` with `--action` and `--wait`; macOS has no actions. Button rendering and clicks are unverified until a real-device run |
+| Session mute refused or does nothing to a digest | A session must have produced at least one notification or already be muted before it can be muted. The morning digest, diagnostics and broadcasts have no session binding |
 | Native panel content clipped or cannot scroll | `dn-scroll` owns `height:100%; overflow-y:auto` inside the host `main` box; check for a stale client bundle or changed host slot geometry, then restart DSH |
 | Behavior differs on provider/device | consult `docs/memory/risks.md`; contract tests do not certify provider payloads |
 
@@ -152,6 +168,8 @@ Before publishing:
 12. optionally run `node test/host/harness.smoke.mjs` against the installed 0.2.2-rc.3 host for the disposable web/headless seam smoke.
 
 The Windows desktop path was exercised on a real Windows 11 26H2 machine (toast, empty title/body, boundary scripts). Linux delivery has contract coverage only; run it once on a GNOME or KDE Plasma desktop before calling it verified. This line did not get an end-to-end run inside the installed DSH GUI because direct browser access to that GUI requires authentication. The Native scroll container was verified in a real browser reproducing the host `main` slot fixed-height geometry; repeat the installed-UI scroll and desktop-notification smoke when an authenticated GUI session is available.
+
+For a development build that includes the session notification policy, also open **Delivery by category**, verify one overlay card and its Session click, then mute that session and confirm overlay, system and remote delivery all stop. That check is not part of the 0.14.2 release evidence.
 
 Record unverified real-provider gaps instead of hand-waving them away.
 
