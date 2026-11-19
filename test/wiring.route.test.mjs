@@ -269,8 +269,12 @@ test('index 装配：registry.dispose 幂等——apply 两次并重复执行清
     inbound: { allowUsers: ['u1'], stateDir },
   }
   apply(ctx, config)
+  const afterFirst = effects.length
   apply(ctx, config)
-  assert.equal(effects.length, 2)
+  // 每次 apply 注册同样数量的清理 effect（当前为聚合 dispose + Native 控制面句柄回收）；
+  // 数量随装配演进，但「两次 apply 不互相吞掉清理」必须成立。
+  assert.ok(afterFirst >= 1)
+  assert.equal(effects.length, afterFirst * 2)
   assert.doesNotThrow(() => { for (const cleanup of effects) cleanup() })
   assert.doesNotThrow(() => { for (const cleanup of effects) cleanup() }, '重复清理（含 registry.dispose 二次调用）不抛')
 })
@@ -604,7 +608,13 @@ test('事件分流：resolveOutbound 返回 quiet=true → notifyAll 收到 { ch
       { type: 'approval/asked', seq: 1, data: { toolName: 'bash' } },
     )
     await new Promise((resolve) => setTimeout(resolve, 30))
-    assert.deepEqual(seenOptions, [{ channelTypes: ['webhook'], quiet: true }], 'quiet=true 透传给 notifyAll')
+    assert.deepEqual(seenOptions, [{
+      channelTypes: ['webhook'],
+      quiet: true,
+      sessionId: 's9',
+      sessionTitle: null,
+      category: 'session.approval',
+    }], 'quiet=true 与受信会话元数据透传给 notifyAll')
     assert.deepEqual(touched, ['s9'], 'registry.touch 收到会话活跃信号')
     assert.equal(fetches.length, 0, 'quiet 会话不实际发送（静音只静出站推送，不吞事件线）')
     dispose()
@@ -636,7 +646,13 @@ test('事件分流：quiet=false 时按 channelTypes 分流，只实际发送绑
       { type: 'approval/asked', seq: 1, data: { toolName: 'bash' } },
     )
     await new Promise((resolve) => setTimeout(resolve, 30))
-    assert.deepEqual(seenOptions, [{ channelTypes: ['webhook'], quiet: false }])
+    assert.deepEqual(seenOptions, [{
+      channelTypes: ['webhook'],
+      quiet: false,
+      sessionId: 's10',
+      sessionTitle: null,
+      category: 'session.approval',
+    }])
     assert.deepEqual(fetches, ['http://only-bound/hook'], '只发送路由命中的 webhook，bark 被过滤')
     assert.deepEqual(touched, ['s10'])
     dispose()

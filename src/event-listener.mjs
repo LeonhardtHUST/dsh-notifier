@@ -7,6 +7,16 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { createKeywordFilter, createGraceQueue } from './rules.mjs'
 import { createHostEventRegistrar, normalizeSessionEventArgs } from './host-events.mjs'
+// 宿主生命周期（todo/goal/survey）：纯映射 + 有界状态，载荷证据见模块头。
+import {
+  BASELINE_CATEGORIES,
+  createGoalLifecycleState,
+  createTodoLifecycleState,
+  intentOfSurveyToolCall,
+  lifecycleStrings,
+  mapGoalEvent,
+  mapTodoEvent,
+} from './host/lifecycle.mjs'
 // v0.5 状态上报 + 动作闭环
 import { createTurnTracker } from './status/turn-tracker.mjs'
 import { normalizeInbound, buildActionPayload } from './inbound/_contract.mjs'
@@ -90,14 +100,32 @@ const TURN_END_META = {
   interrupted: { level: 'timeSensitive' },
 }
 
+/** turn/end reason.kind -> 自动通知类别（已告知主代理：aborted 单独为 session.cancelled）。 */
+const TURN_END_CATEGORY = {
+  completed: BASELINE_CATEGORIES.TURN_COMPLETED,
+  error: BASELINE_CATEGORIES.TURN_ERROR,
+  blocked: BASELINE_CATEGORIES.TURN_ERROR,
+  aborted: BASELINE_CATEGORIES.TURN_CANCELLED,
+  'max-tokens': BASELINE_CATEGORIES.TURN_ERROR,
+  interrupted: BASELINE_CATEGORIES.TURN_ERROR,
+}
+
 /** 把 session/event 映射为可推送意图；不可推送返回 undefined。
- *  strings 可选（缺省 zh 文案表）——既有调用方零感知，lang 路径显式传入。 */
+ *  strings 可选（缺省 zh 文案表）——既有调用方零感知，lang 路径显式传入。
+ *  category 供 notify 包装按类别做策略/账本（sendOptions.category），未知类别不编造。 */
 export function intentOfSessionEvent(event, strings = stringsOf()) {
   switch (event?.type) {
     // v0.5 任务开始（默认关，events.turnStart.enabled === true 才放行）。
     // detail 留空：workspace 由 push 侧组装（intent 是纯函数，不持有 session）。
     case 'turn/start':
-      return { event: 'turn/start', kind: 'start', headline: strings.turnStart, level: 'passive', detail: '' }
+      return {
+        event: 'turn/start',
+        kind: 'start',
+        category: BASELINE_CATEGORIES.TURN_START,
+        headline: strings.turnStart,
+        level: 'passive',
+        detail: '',
+      }
     case 'turn/end': {
       const kind = event.data?.reason?.kind
       const meta = TURN_END_META[kind]
@@ -107,7 +135,14 @@ export function intentOfSessionEvent(event, strings = stringsOf()) {
       else if (kind === 'blocked') detail = strings.turnEndDetail.blocked
       else if (kind === 'max-tokens') detail = strings.turnEndDetail['max-tokens']
       else if (kind === 'interrupted') detail = strings.turnEndDetail.interrupted
-      return { event: 'turn/end', kind, headline: strings.turnEndHeadline[kind], level: meta.level, detail }
+      return {
+        event: 'turn/end',
+        kind,
+        category: TURN_END_CATEGORY[kind],
+        headline: strings.turnEndHeadline[kind],
+        level: meta.level,
+        detail,
+      }
     }
     case 'approval/asked': {
       const data = event.data ?? {}
@@ -118,6 +153,7 @@ export function intentOfSessionEvent(event, strings = stringsOf()) {
       return {
         event: 'approval/asked',
         kind: 'approval',
+        category: BASELINE_CATEGORIES.APPROVAL,
         headline: strings.approval.headline,
         level: 'timeSensitive',
         detail: strings.approval.detail(tool, reason),
@@ -134,7 +170,14 @@ export function intentOfAgentError(payload = {}, strings = stringsOf()) {
   const detail = error instanceof Error
     ? error.message
     : (typeof error === 'string' ? error : (error?.message ?? strings.agentError.detailFallback))
-  return { event: 'agent/error', kind: 'error', headline: strings.agentError.headline, level: 'timeSensitive', detail }
+  return {
+    event: 'agent/error',
+    kind: 'error',
+    category: BASELINE_CATEGORIES.AGENT_ERROR,
+    headline: strings.agentError.headline,
+    level: 'timeSensitive',
+    detail,
+  }
 }
 
 /** 自动通知来源只占一行；剥除控制/方向字符并避免伪造额外的 [来源] 标签。 */
@@ -374,8 +417,97 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
   const dedup = createDedupLedger()
   // #32：turn/end 正文与心跳摘录的有界来源（见 createAssistantTextCache 注释）
   const assistantCache = createAssistantTextCache()
+  // 生命周期通知（todo/goal/survey）：文案与有界状态。状态必须在类别开关之前前进，
+  // 否则用户稍后打开 changed/paused 时会用旧快照算出错误的「变化」。
+  const lifecycleText = lifecycleStrings(resolvedConfig.lang)
+  const todoState = createTodoLifecycleState()
+  const goalState = createGoalLifecycleState()
+  /** 会话标题：优先生效 wiring.sessionTitleOf(session)（装配层注入宿主 title 服务），
+   *  其次 session.title / session.header.title，最后 null。任何读取失败都不得阻断通知。 */
+  const sessionTitleOf = (session) => {
+    try {
+      if (typeof wiring.sessionTitleOf === 'function') {
+        const value = wiring.sessionTitleOf(session)
+        if (typeof value === 'string' && value.trim() !== '') return value
+      }
+    } catch { /* 标题是元数据，读失败只丢字段 */ }
+    try {
+      const value = session?.title ?? session?.header?.title
+      if (typeof value === 'string' && value.trim() !== '') return value
+    } catch { /* 宿主元数据不可读时保持 null */ }
+    return null
+  }
+  /** session.id 的安全读取（数字也接受；空值不塞空串进 sendOptions）。 */
+  const sessionIdOf = (session) => {
+    try {
+      const value = session?.id
+      if (typeof value === 'string') return value === '' ? null : value
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+    } catch { /* 无可用 id */ }
+    return null
+  }
   const warn = (message) => {
     try { ctx?.logger?.warn?.('[dsh-notifier]', message) } catch { /* 日志失败绝不致命 */ }
+  }
+
+  // ---- 待决通知的短延迟收口（approval/survey 假阳性防护）----
+  // DSH ApprovalService.request() 先 append `approval/asked`，再跑 waterfall；policy='never'
+  // 或 signal 已 abort 时会立刻 append `approval/decided`。若 asked 一到就推送，用户会收到
+  // 一条「需要批准」但实际从未等待的通知。这里只做事件层短延迟：asked 按请求 id 挂一个
+  // 可取消定时器，decided 同 id 到达即取消；waterfall/回答链完全不变。
+  // survey 同理：ask_user_question 的 tool/call 之后若立即 tool/result（无等待/秒回错误），
+  // 按 callId 取消，不推送。id-less 的旧形状 approval 保持既有即时行为。
+  const settleDelayMs = (() => {
+    const value = Number(wiring.lifecycleSettleMs)
+    return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 1500
+  })()
+  const MAX_PENDING_SETTLES = 256
+  const settles = new Map()
+  const fireSettle = (key) => {
+    const entry = settles.get(key)
+    if (entry === undefined) return undefined
+    settles.delete(key)
+    try { return entry.task() } catch { return undefined }
+  }
+  const cancelSettle = (key) => {
+    const entry = settles.get(key)
+    if (entry === undefined) return
+    clearTimeout(entry.timer)
+    settles.delete(key)
+  }
+  const scheduleSettle = (key, task) => {
+    cancelSettle(key)
+    // 测试/显式 0：保持同步即时语义（存量调用方零感知）。
+    if (settleDelayMs <= 0) return task()
+    while (settles.size >= MAX_PENDING_SETTLES) {
+      const oldest = settles.keys().next().value
+      if (oldest === undefined) break
+      warn(`待决通知表达上限（${MAX_PENDING_SETTLES}），提前处理最旧一条（${oldest.startsWith('approval:') ? 'approval' : 'survey'}）`)
+      fireSettle(oldest)
+    }
+    const timer = setTimeout(() => { fireSettle(key) }, settleDelayMs)
+    timer.unref?.()
+    settles.set(key, { timer, task })
+    return undefined
+  }
+  const flushSettles = () => {
+    const triggered = []
+    for (const key of [...settles.keys()]) triggered.push(fireSettle(key))
+    return triggered
+  }
+  const approvalIdOf = (event) => {
+    try {
+      const id = event?.data?.id
+      return typeof id === 'string' && id !== '' ? id : null
+    } catch { return null }
+  }
+  const toolResultCallIdOf = (event) => {
+    try {
+      const data = event?.data
+      const candidates = [data?.message?.toolCallId, data?.message?.source?.callId, data?.callId]
+      for (const value of candidates) if (typeof value === 'string' && value !== '') return value
+    } catch { /* 载荷不可读时不取消任何待决提醒 */ }
+    return null
   }
   // P1-2 错误可见性（2026-08-20，Trae1）：keywords.regex 开启时，非法正则条目会静默
   // 降级为字面量子串匹配——语义从「正则命中」变「子串包含」，include 规则可能因此
@@ -386,7 +518,9 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
   }
 
   /** 事件粒度门：配置关掉的事件线/结束原因直接静默（不占 dedup 名额）。
-   *  容忍两种形状：resolveConfig 归一化的 { enabled, kinds } 与原始的 { completed: false } 直传。 */
+   *  容忍两种形状：resolveConfig 归一化的 { enabled, kinds } 与原始的 { completed: false } 直传。
+   *  生命周期类别全部放行给 notify 的会话通知策略矩阵（唯一权威）；这里只保留
+   *  既有 events.* 开关，不引入第二套类别默认值。 */
   const eventAllowed = (intent) => {
     if (intent.event === 'turn/end') {
       const turnEnd = events.turnEnd
@@ -399,6 +533,9 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     // 既有调用方零感知（resolveConfig 归一后才有 enabled: false / true 之分）。
     if (intent.event === 'turn/start') return events.turnStart?.enabled === true
     if (intent.event === 'approval/asked') return events.approval !== false
+    // todo/write、goal/change、survey 的 tool/call：送达由会话通知策略矩阵裁决。
+    if (intent.event === 'todo/write' || intent.event === 'goal/change') return true
+    if (intent.event === 'tool/call') return true
     return events.agentError !== false
   }
 
@@ -457,11 +594,15 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
    * 对全部交互通道发动作卡片（stall / 心跳通知的「⏹ 停止任务」按钮）。
    * 尽力而为语义：dispatcher 缺失 / 铸造失败 / 单通道失败 → 静默跳过——通知文本里的
    * 「回复 /stop 取消」hint 已是全通道兜底，卡片是增强 UX 而非依赖路径。
+   * `legacyGate` 仅用于没有 canSendRemote 的旧 notifier（存量同步语义）。新 notifier
+   * 的铸造前闸在 push() 里统一判定；card 的远端对称抑制留给 notify 包装另行收敛。
    */
-  const pushActionCard = (session, message) => {
+  const pushActionCard = (session, message, { legacyGate = true } = {}) => {
     // Presence suppression applies to automatic action cards as well as their text
     // notification; otherwise a remote Stop button would bypass the de-duplication gate.
-    try { if (typeof notifier?.shouldSuppressRemote === 'function' && notifier.shouldSuppressRemote() === true) return } catch { /* fail open */ }
+    if (legacyGate) {
+      try { if (typeof notifier?.shouldSuppressRemote === 'function' && notifier.shouldSuppressRemote() === true) return } catch { /* fail open */ }
+    }
     const dispatcher = (() => { try { return actionsFn() } catch { return null } })()
     const rawList = (() => { try { return interactiveFn() } catch { return null } })()
     if (dispatcher === null || dispatcher === undefined) return
@@ -511,7 +652,15 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     ? { firstAfterMs: events.longRunning.firstAfterMs, everyMs: events.longRunning.everyMs }
     : null
   const stallCfg = events.stall?.enabled === true ? { afterMs: events.stall.afterMs } : null
-  const statusIntent = (event, headline, level, info) => ({ event, kind: event, headline, level, detail: '', info })
+  const statusIntent = (event, headline, level, info) => ({
+    event,
+    kind: event,
+    category: BASELINE_CATEGORIES.STATUS,
+    headline,
+    level,
+    detail: '',
+    info,
+  })
   const trackerOverrides = (wiring.trackerOverrides !== null && typeof wiring.trackerOverrides === 'object')
     ? wiring.trackerOverrides
     : {}
@@ -522,6 +671,28 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     onHeartbeat: (session, info) => push(statusIntent('longRunning', strings.status.longRunningHeadline, 'passive', info), session),
     onStall: (session, info) => push(statusIntent('stall', strings.status.stallHeadline, 'timeSensitive', info), session),
   })
+
+  /** 出站选项：分流/静音 + 通知包装需要的会话元数据与类别。 */
+  const deliveryOptionsOf = (intent, session) => {
+    const options = resolveOutboundOf(session)
+    const sessionId = sessionIdOf(session)
+    const category = typeof intent.category === 'string' && intent.category !== '' ? intent.category : undefined
+    return {
+      ...options,
+      ...(sessionId !== null ? { sessionId } : {}),
+      sessionTitle: sessionTitleOf(session),
+      ...(category !== undefined ? { category } : {}),
+    }
+  }
+
+  /** 新的 notify 包装用它判定「该会话是否还允许远端投放」；旧 notifier 无此方法。 */
+  const hasRemoteGate = () => {
+    try { return typeof notifier?.canSendRemote === 'function' } catch { return false }
+  }
+  const canSendRemoteNow = (sendOptions) => {
+    try { return notifier.canSendRemote(sendOptions) !== false } catch { return true }
+  }
+  const suppressedRemotely = (outcome) => Array.isArray(outcome?.suppressed) && outcome.suppressed.length > 0
 
   const push = (intent, session) => {
     // v0.5 状态上报文案组装：turn/start / longRunning / stall 三类 intent 的正文
@@ -548,13 +719,34 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     if (registry !== null && session?.id !== undefined && session?.id !== null) {
       try { registry.touch(String(session.id)) } catch { /* 台账失败绝不影响推送 */ }
     }
-    // v0.5 动作闭环：stall / 心跳通知附带「停止任务」按钮（尽力而为，文本 hint 已兜底）
-    if ((intent.event === 'stall' || intent.event === 'longRunning') && actionsFn !== null) {
-      pushActionCard(session, message)
-    }
-    return notifier.notifyAll(message, resolveOutboundOf(session)).catch((error) => {
+    // 会话元数据与类别走第二参（message 归一化会剥离未知字段；包装器据此记账/静音）。
+    const sendOptions = deliveryOptionsOf(intent, session)
+    const reportFailure = (error) => {
       warn(`自动推送失败: ${error instanceof Error ? error.message : String(error)}`)
-    })
+    }
+    // v0.5 动作闭环：stall / 心跳通知附带「停止任务」按钮（尽力而为，文本 hint 已兜底）。
+    const delivery = notifier.notifyAll(message, sendOptions)
+    const wantsCard = (intent.event === 'stall' || intent.event === 'longRunning') && actionsFn !== null
+    if (!wantsCard) return delivery.catch(reportFailure)
+    if (hasRemoteGate()) {
+      // 新包装器：先让通知落地，再据真实结果决定是否铸造远端卡片——
+      //  · canSendRemote === false（用户静音/仅本机模式）→ 不 mint、不外发；
+      //  · 通知结果 suppressed 非空（desktop 已兜住远端）→ 不再发远端卡片。
+      return Promise.resolve(delivery).then((outcome) => {
+        if (suppressedRemotely(outcome)) return outcome
+        if (!canSendRemoteNow(sendOptions)) return outcome
+        pushActionCard(session, message, { legacyGate: false })
+        return outcome
+      }, (error) => {
+        reportFailure(error)
+        // 通知失败不是「已在本机看到」的证据：仍按远端闸尝试补发卡片。
+        if (canSendRemoteNow(sendOptions)) pushActionCard(session, message, { legacyGate: false })
+        return undefined
+      })
+    }
+    // 旧 notifier（无 canSendRemote）：保留既有同步卡片路径与旧抑制闸，行为零变化。
+    pushActionCard(session, message)
+    return Promise.resolve(delivery).catch(reportFailure)
   }
 
   const sessionListener = (session, event) => {
@@ -573,6 +765,73 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     // 用户活动信号：任何 user/* 事件（发消息/编辑）都证明人在键盘，取消宽限窗内待发打扰
     if (typeof event.type === 'string' && event.type.startsWith('user/')) {
       grace.activity()
+      return
+    }
+    // 结算信号只用于取消待决提醒，本身不产生通知：
+    //  - approval/decided 同 id 到达 = 这次审批从未真正等待（policy=never / 已 abort / 秒决）；
+    //  - tool/result 同 callId 到达 = 提问没有进入等待（秒回错误/无等待调用）。
+    if (event.type === 'approval/decided') {
+      const id = approvalIdOf(event)
+      if (id !== null) cancelSettle(`approval:${id}`)
+      return
+    }
+    if (event.type === 'tool/result') {
+      const callId = toolResultCallIdOf(event)
+      if (callId !== null) cancelSettle(`survey:${session.id ?? '(anon)'}:${callId}`)
+      return
+    }
+    // approval/asked：id 缺失的旧形状保持即时推送；带 id 时先挂可取消短延迟。
+    if (event.type === 'approval/asked') {
+      const intent = intentOfSessionEvent(event, strings)
+      if (intent === undefined) return
+      if (!eventAllowed(intent)) return
+      // G-18：键追加负载摘要，同 seq 但先后请不同工具时不互吞。
+      const key = `${session.id ?? '(anon)'}:${event.seq ?? 0}:${hash6(intent.detail)}`
+      if (!dedup.test(key)) return
+      const id = approvalIdOf(event)
+      if (id === null) {
+        push(intent, session)
+        return
+      }
+      scheduleSettle(`approval:${id}`, () => push(intent, session))
+      return
+    }
+    // 生命周期线（todo/goal/survey）：先走有界状态与纯映射。载荷畸形只告警不推送，
+    // 且不推进状态（避免用坏快照污染下一次 diff）。
+    const todoMapped = mapTodoEvent(todoState, String(session.id ?? ''), event, lifecycleText)
+    if (todoMapped !== undefined) {
+      if (todoMapped.invalid === true) {
+        warn('宿主 todo/write 载荷无效（todos 非数组或条目缺 content/status），本次忽略')
+        return
+      }
+      if (todoMapped.intent === undefined) return
+      if (!eventAllowed(todoMapped.intent)) return
+      const key = `${session.id ?? '(anon)'}:${event.seq ?? 0}`
+      if (!dedup.test(key)) return
+      push(todoMapped.intent, session)
+      return
+    }
+    const goalMapped = mapGoalEvent(goalState, String(session.id ?? ''), event, lifecycleText)
+    if (goalMapped !== undefined) {
+      if (goalMapped.invalid === true) {
+        warn('宿主 goal/change 载荷无效（缺 operation/goal 快照或字段畸形），本次忽略')
+        return
+      }
+      if (goalMapped.intent === undefined) return
+      if (!eventAllowed(goalMapped.intent)) return
+      const key = `${session.id ?? '(anon)'}:${event.seq ?? 0}`
+      if (!dedup.test(key)) return
+      push(goalMapped.intent, session)
+      return
+    }
+    const surveyIntent = intentOfSurveyToolCall(event, lifecycleText)
+    if (surveyIntent !== undefined) {
+      if (!eventAllowed(surveyIntent)) return
+      // 提问的等待身份是 callId，不是 seq：宿主重放同一调用不得重复提醒。
+      const key = `survey:${session.id ?? '(anon)'}:${event.data.callId}`
+      if (!dedup.test(key)) return
+      // 与 approval 同一收口：tool/result 同 callId 在短延迟内到达即取消。
+      scheduleSettle(key, () => push(surveyIntent, session))
       return
     }
     const intent = intentOfSessionEvent(event, strings)
@@ -637,7 +896,7 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
   // 返回可被 cordis await 的清理：flush 未到期的 turn/end 防抖与宽限窗任务，并等待所有在途推送完成。
   // headless 一次性运行在 appExit 前会 dispose 整个树（5s 宽限），Pending 通知因此能送达。
   return () => {
-    const triggered = [...debounce.flush(), ...grace.flush()]
+    const triggered = [...debounce.flush(), ...grace.flush(), ...flushSettles()]
     tracker.dispose() // v0.5：清心跳/卡住定时器
     disposeSession?.()
     disposeError?.()
