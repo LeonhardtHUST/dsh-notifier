@@ -69,6 +69,10 @@ function renderNotify(value) {
   if (value.rateLimited === true) {
     return oneText(`已限流：notify 工具每分钟调用已达上限（防提示注入刷渠道，上限 ${value.rateLimit ?? ''} 次/分钟）。请稍后再试，或让用户调高 toolRateLimitPerMinute 配置。`)
   }
+  if (value.overlay === true && value.delivered?.length === 0 && value.failed?.length === 0) {
+    return oneText('通知已加入应用内浮层投递队列，是否显示取决于窗口状态与通知规则。')
+  }
+  if (value.policySkipped === true) return oneText('未投递：会话静音、投递规则或目标不可用。')
   if (value.skipped === true) {
     return oneText(`未发送：渠道 "${value.channel ?? ''}" 未配置。已配置渠道类型：${CHANNEL_TYPES.join('/')}。可在 profile 的 cordis.patch.yml 中为 dsh-notifier 添加对应 channels 后重启。`)
   }
@@ -126,14 +130,19 @@ export function registerNotifyTool(ctx, notifier, options = {}) {
         return { ok: false, rateLimited: true, rateLimit: limiter.limit, delivered: [], failed: [] }
       }
       const message = { title: typeof args.title === 'string' ? args.title : '', content: args.message }
-      if (notifier.channelCount === 0) {
+      const session = execContext?.agent?.session ?? execContext?.session ?? execContext?.agent
+      const category = 'session.message'
+      const sessionId = session?.id
+      const meta = notifier.sessionNotificationsEnabled === true && typeof sessionId === 'string' && sessionId !== ''
+        ? { sessionId, sessionTitle: options.sessionTitleOf?.(session), category } : undefined
+      if (notifier.channelCount === 0 && (meta === undefined || args.channel?.trim?.())) {
         return { ok: false, skipped: true, channel: args.channel, delivered: [], failed: [] }
       }
       if (typeof args.channel === 'string' && args.channel.trim() !== '') {
         // 单渠道路径不分流：agent 已显式点名渠道，路由过滤只会添乱（v0.3.1 行为原样保留）
-        const result = await notifier.notify(args.channel.trim(), message)
+        const result = await (meta === undefined ? notifier.notify(args.channel.trim(), message) : notifier.notify(args.channel.trim(), message, meta))
         if (result.skipped === true) {
-          return { ok: false, skipped: true, channel: result.channel, delivered: [], failed: [] }
+          return { ok: false, skipped: true, ...(meta && notifier.canSendRemote?.(meta) === false ? { policySkipped: true } : {}), channel: result.channel, delivered: [], failed: [] }
         }
         if (result.ok) {
           return { ok: true, channel: result.channel, delivered: [result.channel], failed: [] }
@@ -147,7 +156,7 @@ export function registerNotifyTool(ctx, notifier, options = {}) {
       // 自动推送（event-listener）；把 quiet 带进来会让「agent 主动喊人」被无声吞掉。
       // 任何解析异常一律回落无过滤广播（全局池，向后兼容，绝不弄崩工具调用）。
       const agentId = execContext?.agent?.id ?? execContext?.agent?.session?.id ?? execContext?.session?.id ?? null
-      let sendOptions = undefined
+      let sendOptions = meta
       if (agentId !== null && String(agentId) !== '' && router !== null) {
         try {
           const globalTypes = globalChannelTypes !== null
@@ -158,7 +167,7 @@ export function registerNotifyTool(ctx, notifier, options = {}) {
             workspaceOf(execContext?.agent ?? execContext?.session ?? {}),
             Array.isArray(globalTypes) ? globalTypes : [],
           )
-          sendOptions = { channelTypes: resolved.channelTypes }
+          sendOptions = { ...meta, channelTypes: resolved.channelTypes }
         } catch { /* 解析异常回落全局广播 */ }
       }
       // v0.7 候选：广播补 tool 来源（record 带 kind:'tool'）。v0.6 缓发——工具分流的
@@ -167,7 +176,9 @@ export function registerNotifyTool(ctx, notifier, options = {}) {
         ? await notifier.notifyAll(message)
         : await notifier.notifyAll(message, sendOptions)
       return {
-        ok: broadcast.failed.length === 0,
+        ok: meta === undefined ? broadcast.failed.length === 0 : broadcast.ok === true,
+        ...(broadcast.overlay ? { overlay: true } : {}),
+        ...(meta !== undefined && broadcast.delivered.length === 0 && !broadcast.overlay && broadcast.failed.length === 0 ? { skipped: true, policySkipped: true } : {}),
         delivered: broadcast.delivered,
         failed: broadcast.failed.map((item) => ({ channel: item.channel, error: item.error })),
       }

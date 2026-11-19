@@ -7,7 +7,7 @@ import { CHANNEL_TYPES, resolveConfig } from './config.mjs'
 import { composeOutboundChannels, accountOf } from './assembly/outbound.mjs'
 import { resolveAdminToken } from './assembly/admin-token.mjs'
 import { resolveInboundSignals } from './assembly/inbound-signals.mjs'
-import { createNotifier, createEventNotifier } from './notify.mjs'
+import { createNotifier } from './notify.mjs'
 import { createEventListener } from './event-listener.mjs'
 import { registerNotifyTool, registerNotifyTestTool } from './tool-register.mjs'
 import { createLedger, yesterdayWindow } from './ledger.mjs'
@@ -52,6 +52,7 @@ import { migrateCanonicalChannelConfig } from './control-surface/channel-config-
 import { createChannelProjection } from './control-surface/channels.mjs'
 import { createLocalNotificationSurface } from './control-surface/local.mjs'
 import { createLocalPresence, createHostWakeProbe } from './control-surface/presence.mjs'
+import { createSessionNotifications, sessionLinkOf } from './control-surface/session-notifications.mjs'
 import { createTaskProjection } from './control-surface/tasks.mjs'
 import { createQuestionProjection } from './control-surface/questions.mjs'
 import { createLaunchTickets } from './control-surface/launch-ticket.mjs'
@@ -302,21 +303,31 @@ export function apply(ctx, config = {}) {
     emitSend,
   ])
 
-  const notifier = createNotifier(ctx, outboundSource, { segment: resolved.segment, routing: resolved.routing, onSend })
-
-  // v0.14.2 远程抑制：本地 presence 证据 + 持久化策略（focus/unlock/wake）。
-  // 事件监听器经 createEventNotifier 包装：策略命中时由 notifyAll 保留本机 desktop、
-  // 跳过远程渠道；desktop 未启用时 notifyAll 原样发送，绝不改变既有远程通知。
+  const disposers = []
   const localPresence = createLocalPresence({ store })
-  const eventNotifier = createEventNotifier(notifier, () => {
-    const state = localPresence.view()
-    // A browser tab may be remote from the notifier host. Only a Desktop renderer
-    // presence (or host wake evidence) is strong enough to suppress remote delivery.
-    const localEvidence = state.evidence?.source === 'desktop' || state.reasons?.includes('wake')
-    return localEvidence && state.suppressing === true
+  let titleService = null
+  let sessionWebServer = null
+  const sessionTitleOf = session => {
+    try { return titleService?.get?.(session)?.title ?? session?.title ?? session?.header?.title } catch { return undefined }
+  }
+  if (typeof ctx?.inject === 'function') {
+    try {
+      ctx.inject(['sessionTitle'], scope => {
+        const value = scope.sessionTitle
+        titleService = value
+        scope.effect(() => () => { if (titleService === value) titleService = null })
+      })
+    } catch { /* Title lookup is optional in headless/older compositions. */ }
+  }
+  const sessionNotifications = createSessionNotifications({
+    store, revision: surfaceRevision, presence: localPresence, warn,
+    sessionActions: id => sessionLinkOf(sessionWebServer, id),
+  })
+  disposers.push(() => sessionNotifications.dispose())
+  const notifier = createNotifier(ctx, outboundSource, {
+    segment: resolved.segment, routing: resolved.routing, onSend, sessionNotifications,
   })
 
-  const disposers = []
   // 宿主睡眠/唤醒探测：Node 定时器在挂起期间不触发，恢复后的长间隙就是本地唤醒证据。
   // 探针 unref，不让 headless 进程被它吊住。
   const wakeProbe = createHostWakeProbe({ onWake: () => localPresence.markWake() })
@@ -416,6 +427,17 @@ export function apply(ctx, config = {}) {
   let busRef = null
   let questionsBridge = null
   let nativeBridge = null
+  // Exact call ownership is recorded only by a bridge that actually took the request;
+  // merely being installed cannot suppress the generic remote reminder.
+  const attentionClaims = new Map()
+  const attentionClaimKey = (category, sessionId, callId) => JSON.stringify([category, sessionId, callId])
+  const claimRemoteAttention = (category, sessionId, callId) => {
+    if (typeof sessionId !== 'string' || typeof callId !== 'string' || !callId) return
+    const key = attentionClaimKey(category, sessionId, callId)
+    attentionClaims.delete(key)
+    attentionClaims.set(key, Date.now())
+    if (attentionClaims.size > 512) attentionClaims.delete(attentionClaims.keys().next().value)
+  }
   // v0.10 提交7：宿主事件 registrar 快照（管理台 /host 的 events.received 视图）
   // 与图片入站能力标记（会话路由装配成功即 available）。惰性读取，装配前为 null/false。
   let hostEventsRegistrar = null
@@ -423,7 +445,15 @@ export function apply(ctx, config = {}) {
   const questionsForChannels = {
     decide: (payload) => questionsBridge?.decide(payload) ?? { ok: false, message: strings.index.questionsNotReady },
   }
-  disposers.push(createEventListener(ctx, eventNotifier, resolved, {
+  disposers.push(createEventListener(ctx, notifier, resolved, {
+    sessionTitleOf,
+    ownsRemoteAttention: (intent, session) => {
+      if (!intent.callId) return false
+      const key = attentionClaimKey(intent.category, session.id, intent.callId)
+      const claimedAt = attentionClaims.get(key)
+      attentionClaims.delete(key)
+      return Number.isFinite(claimedAt) && Date.now() - claimedAt < 30_000
+    },
     router,
     registry,
     bus: () => busRef,
@@ -432,6 +462,7 @@ export function apply(ctx, config = {}) {
     onHostEvents: (registrar) => { hostEventsRegistrar = registrar }, // 诊断快照外泄（提交7）
   }))
   const disposeTool = registerNotifyTool(ctx, notifier, {
+    sessionTitleOf,
     rateLimitPerMinute: resolved.toolRateLimitPerMinute,
     router,
     channelTypes: () => outboundSource.types(),
@@ -672,6 +703,8 @@ export function apply(ctx, config = {}) {
     let disposeApproval = () => {}
     try {
       disposeApproval = registerApprovalHandler({
+        sessionTitleOf,
+        claimRemoteAttention,
         ctx,
         notifier,
         bus,
@@ -701,6 +734,7 @@ export function apply(ctx, config = {}) {
     if (resolved.questions.enabled) {
       try {
         questionsBridge = createQuestionBridge({
+          sessionTitleOf,
           bus,
           vault,
           store,
@@ -732,6 +766,7 @@ export function apply(ctx, config = {}) {
           questionBridge: questionsBridge,
           logger,
           canDeliver: () => Array.isArray(interactiveRaw) && interactiveRaw.length > 0,
+          claimRemoteAttention: resolved.questions.remoteEnabled === false ? undefined : claimRemoteAttention,
         })
         disposers.push(() => nativeBridge.dispose())
         const reportNativeBridge = () => {
@@ -852,6 +887,7 @@ export function apply(ctx, config = {}) {
     tasks: surfaceTasks,
     questions: surfaceQuestions,
     local: surfaceLocal,
+    sessionNotifications,
     activity: surfaceActivity,
     health: surfaceHealth,
     storageStatus: () => {
@@ -890,6 +926,11 @@ export function apply(ctx, config = {}) {
   // 静默降级为无 Native RPC（notify/tools/agents 核心不受影响）。
   const mountSurfaceRpc = (rpcCtx) => {
     try {
+      const server = rpcCtx.webServer
+      if (server) {
+        sessionWebServer = server
+        rpcCtx.effect?.(() => () => { if (sessionWebServer === server) sessionWebServer = null })
+      }
       const disposeSurfaceRpc = registerControlSurfaceRpc(rpcCtx, surfaceService)
       if (typeof disposeSurfaceRpc === 'function') disposers.push(() => { try { disposeSurfaceRpc() } catch {} })
       else warn('Native Control Surface 无可用宿主接缝，已降级为 Standalone')

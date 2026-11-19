@@ -54,12 +54,15 @@ export function createNotifier(ctx, channels, options = {}) {
   }
 
   /** 包装单渠道发送：分段开启且超预算时切段顺序送达，任一段失败即整体失败。 */
-  const sendOne = async (type, config, msg) => {
+  const sendOne = async (type, config, msg, deliveryOptions) => {
     const adapter = adapters[type]
-    if (segment.enabled === false) return adapter.send(config, msg)
+    const send = piece => deliveryOptions === undefined
+      ? adapter.send(config, piece)
+      : adapter.send(config, piece, deliveryOptions)
+    if (segment.enabled === false || (type === 'desktop' && deliveryOptions !== undefined)) return send(msg)
     let last
     const outcome = await sendSegmented(async (piece) => {
-      last = await adapter.send(config, piece)
+      last = await send(piece)
       return last
     }, msg, { maxCodepoints: segment.maxCodepoints })
     if (outcome.error === null) return last
@@ -78,6 +81,33 @@ export function createNotifier(ctx, channels, options = {}) {
   // v0.13（C11.5 / R4）：只有适配器返回显式回执才算「确认送达」；其余成功一律只是
   // 「provider accepted」（请求已被提供方接受，无端到端送达证据）。词汇权威见 delivery-evidence.mjs。
   const confirmedOf = isConfirmedReceipt
+  const sessionNotifications = options.sessionNotifications
+  const decisionOf = meta => {
+    try { return sessionNotifications?.decide(meta) ?? null } catch { return null }
+  }
+  const identify = (message, decision) => decision === null ? message : {
+    ...message,
+    title: message.title ? `${decision.sessionTitle} · ${message.title}` : decision.sessionTitle,
+  }
+  const allowed = (type, decision) => decision === null || (LOCAL_TYPES.has(type) ? decision.system : decision.remote)
+  const actionsOf = (type, decision) => type === 'desktop' && decision !== null
+    ? sessionNotifications.deliveryOptions(decision) : undefined
+  const overlayOf = (decision, message) => {
+    if (decision === null) return false
+    try {
+      sessionNotifications.observe(decision)
+      return sessionNotifications.publish(decision, message)
+    } catch (error) {
+      warn(`应用内通知发布失败: ${error instanceof Error ? error.message : String(error)}`)
+      return false
+    }
+  }
+  const mutedBeforeSend = Symbol('muted-before-send')
+  const noAcceptance = result => result === mutedBeforeSend || ['unverified', 'suppressed'].includes(result?.acceptance)
+  const attemptSend = (target, decision) => {
+    if (decision !== null && sessionNotifications.isMuted(decision.sessionId)) return mutedBeforeSend
+    return sendOne(target.type, target.entry.config, target.message, actionsOf(target.type, decision))
+  }
 
   // 在途推送账本：flush 时等待它们完成（headless 一次性运行退出前也能送达）。
   const inFlight = new Set()
@@ -95,7 +125,10 @@ export function createNotifier(ctx, channels, options = {}) {
   /** 单渠道推送：未配置/未知渠道静默跳过 + warn 提示；已配置渠道失败返回 failed 结果（不抛出，供工具渲染中文反馈）。 */
   async function notify(channel, msg, sendOptions = {}) {
     const type = typeof channel === 'string' ? channel.trim() : ''
-    const normalized = normalizeMessage(msg)
+    const decision = decisionOf(sendOptions)
+    const normalized = identify(normalizeMessage(msg), decision)
+    if (decision !== null) sessionNotifications.observe(decision)
+    if (!allowed(type, decision)) return channelResult(type, 'skipped')
     const entry = channelsNow().find((item) => item.type === type)
     if (entry === undefined) {
       warn(`渠道 "${type || '(空)'}" 未配置，已跳过推送（可用类型：${Object.keys(adapters).join('/')}）`)
@@ -105,7 +138,8 @@ export function createNotifier(ctx, channels, options = {}) {
     }
     return track((async () => {
       try {
-        const sent = await sendOne(type, entry.config, normalized)
+        const sent = await attemptSend({ type, entry, message: normalized }, decision)
+        if (noAcceptance(sent)) return channelResult(type, 'skipped')
         const confirmed = confirmedOf(sent)
         const result = channelResult(type, 'sent')
         // delivered 是 legacy 别名（== accepted）；accepted/confirmed 才是有证据强度的语义。
@@ -143,8 +177,10 @@ export function createNotifier(ctx, channels, options = {}) {
    *     desktop 未命中时保持原样，绝不把用户唯一能收到的远程通知吞掉。
    */
   async function notifyAll(msg, sendOptions = {}) {
-    const normalized = normalizeMessage(msg)
-    const quiet = sendOptions?.quiet === true
+    const message = normalizeMessage(msg)
+    const decision = decisionOf(sendOptions)
+    const normalized = identify(message, decision)
+    const quiet = sendOptions?.quiet === true || decision?.muted === true
     const filterTypes = Array.isArray(sendOptions?.channelTypes) ? sendOptions.channelTypes : null
     // v0.6 来源标注（设计稿 §2.3）：source 只并入 onSend record（账本/事件可见），
     // 不进返回值（notify.test 全形状 deepEqual 守着）、不进渠道 msg（normalizeMessage 剥离契约不变）。
@@ -152,17 +188,27 @@ export function createNotifier(ctx, channels, options = {}) {
     const sourceExtra = (source !== null && typeof source === 'object') ? { source } : {}
     if (quiet) {
       // 静音不等于没发生：账本照记（delivered 空、skipped 标记），方便晨报反映被静音的流量
-      const quietOutcome = { ok: true, accepted: [], confirmed: [], delivered: [], skipped: ['(quiet)'], failed: [] }
+      const quietOutcome = { ok: true, accepted: [], confirmed: [], delivered: [], skipped: [decision?.muted ? '(session-muted)' : '(quiet)'], failed: [] }
       audit(normalized, quietOutcome, { source: sourceExtra.source })
       return quietOutcome
     }
+    const overlay = sendOptions?.remoteOnly !== true && overlayOf(decision, message)
+    const overlayExtra = overlay ? { overlay: true } : {}
     const currentChannels = channelsNow()
     if (currentChannels.length === 0) {
-      warn('未配置任何已启用渠道，notifyAll 无操作')
-      return { ok: false, accepted: [], confirmed: [], delivered: [], skipped: [], failed: [] }
+      if (!overlay && decision === null) warn('未配置任何已启用渠道，notifyAll 无操作')
+      return { ok: overlay, accepted: [], confirmed: [], delivered: [], skipped: [], failed: [], ...overlayExtra }
     }
-    const targets = routeTargets(routing, currentChannels, normalized)
-      .filter((target) => filterTypes === null || filterTypes.includes(target.type))
+    const routed = routeTargets(routing, currentChannels, normalized)
+      .filter(target => filterTypes === null || filterTypes.includes(target.type))
+    const targets = routed.filter(target => allowed(target.type, decision)
+      && !(sendOptions?.remoteOnly === true && LOCAL_TYPES.has(target.type))
+      && !(sendOptions?.localOnly === true && !LOCAL_TYPES.has(target.type)))
+    if (routed.length > 0 && targets.length === 0) {
+      const outcome = { ok: true, accepted: [], confirmed: [], delivered: [], skipped: ['(notification-policy)'], failed: [], ...overlayExtra }
+      audit(normalized, outcome, { source: sourceExtra.source })
+      return outcome
+    }
     // v0.6.3 空目标可见化（审查 R1 P1-2）：路由矩阵/分流过滤后目标为空时，原实现
     // delivered/failed/skipped 三空 + ok:true + 零日志——agent 绑定的渠道后来被禁用/
     // routing 渠道名拼错时，通知（含 timeSensitive 审批提醒）静默消失且账本记成功，
@@ -172,7 +218,7 @@ export function createNotifier(ctx, channels, options = {}) {
         ? `分流过滤（channelTypes: [${filterTypes.join(', ')}]）后无目标`
         : '路由矩阵（routing 配置）未命中任何已启用渠道'
       warn(`notifyAll 目标为空：${hint}（可用渠道：${currentChannels.map((entry) => entry.type).join('/') || '无'}）`)
-      const emptyOutcome = { ok: true, accepted: [], confirmed: [], delivered: [], skipped: ['(no-targets)'], failed: [] }
+      const emptyOutcome = { ok: true, accepted: [], confirmed: [], delivered: [], skipped: ['(no-targets)'], failed: [], ...overlayExtra }
       audit(normalized, emptyOutcome, { source: sourceExtra.source })
       return emptyOutcome
     }
@@ -180,7 +226,7 @@ export function createNotifier(ctx, channels, options = {}) {
     // 关键安全门：只有目标里确实存在 desktop 渠道才丢弃远程目标。desktop 未启用
     // （或本次路由没命中 desktop）时行为与旧版逐字节一致——绝不因为一个开关
     // 把用户唯一能收到的远程通知吞掉。
-    const suppressRemote = sendOptions?.suppressRemote === true
+    const suppressRemote = decision === null ? sendOptions?.suppressRemote === true : decision.suppressRemote
     const suppressed = []
     let suppressedTargets = []
     let activeTargets = targets
@@ -202,9 +248,10 @@ export function createNotifier(ctx, channels, options = {}) {
     const batch = activeTargets.map(async (target) => {
       try {
         const sent = await sendWithRetry(
-          () => sendOne(target.type, target.entry.config, target.message),
+          () => attemptSend(target, decision),
           { ...retry, onRetry: (attempt, error) => warn(`渠道 "${target.type}" 第 ${attempt} 次失败，准备重试: ${error instanceof Error ? error.message : String(error)}`) },
         )
+        if (noAcceptance(sent)) { skipped.push(target.type); return }
         accepted.push(target.type)
         if (confirmedOf(sent)) confirmed.push(target.type)
       } catch (error) {
@@ -219,26 +266,22 @@ export function createNotifier(ctx, channels, options = {}) {
     // If the local desktop path failed, restore suppressed remote targets. The local
     // presence policy is a de-duplication preference, not permission to lose every
     // copy of an important notification.
-    if (suppressRemote && suppressedTargets.length > 0 && failed.some((item) => item.channel === 'desktop')) {
-      const fallback = await Promise.all(suppressedTargets.map(async (target) => {
+    if (suppressRemote && suppressedTargets.length > 0 && !accepted.includes('desktop')) {
+      await track(Promise.all(suppressedTargets.map(async (target) => {
         try {
           const sent = await sendWithRetry(
-            () => sendOne(target.type, target.entry.config, target.message),
+            () => attemptSend(target, decision),
             { ...retry, onRetry: (attempt, error) => warn(`渠道 "${target.type}" 远程兜底第 ${attempt} 次失败: ${error instanceof Error ? error.message : String(error)}`) },
           )
+          if (noAcceptance(sent)) { skipped.push(target.type); return }
           accepted.push(target.type)
           if (confirmedOf(sent)) confirmed.push(target.type)
-          return null
         } catch (error) {
           const publicText = error instanceof Error ? (error.publicMessage ?? error.message) : String(error)
           failed.push({ channel: target.type, error: publicText })
-          return target.type
         }
-      }))
-      const failedFallback = new Set(fallback.filter(Boolean))
-      for (let i = suppressed.length - 1; i >= 0; i -= 1) {
-        if (!failedFallback.has(suppressed[i])) suppressed.splice(i, 1)
-      }
+      })))
+      suppressed.length = 0
     }
     const outcome = {
       ok: failed.length === 0,
@@ -251,6 +294,7 @@ export function createNotifier(ctx, channels, options = {}) {
       failed,
       // 只有显式请求抑制时出现：账本/活动页可解释「为什么只有本机收到」。
       ...(suppressRemote ? { suppressed } : {}),
+      ...overlayExtra,
     }
     audit(normalized, outcome, { source: sourceExtra.source })
     return outcome
@@ -259,6 +303,9 @@ export function createNotifier(ctx, channels, options = {}) {
   return {
     notify,
     notifyAll,
+    sessionTitle(messageTitle, meta) { return identify({ title: messageTitle }, decisionOf(meta)).title },
+    canSendRemote(meta) { return meta?.quiet !== true && decisionOf(meta)?.remote !== false },
+    sessionNotificationsEnabled: sessionNotifications != null,
     flush,
     get channelCount() { return channelsNow().length },
     get channels() { return channelsNow().map((entry) => entry.type) },
@@ -288,6 +335,7 @@ export function createEventNotifier(notifier, shouldSuppressRemote) {
       return notifier.notifyAll(message, next)
     },
     shouldSuppressRemote: suppressed,
+    canSendRemote(meta) { return notifier.canSendRemote?.(meta) ?? true },
     flush() { return notifier.flush() },
     get channels() { return notifier.channels },
     get channelCount() { return notifier.channelCount },

@@ -112,6 +112,7 @@ export function createNativeQuestionBridge(deps = {}) {
     }
     let outcome
     try {
+      deps.claimRemoteAttention?.('session.survey', request?.agent?.session?.id ?? request?.agent?.id, request?.wait?.callId)
       outcome = await questionBridge.askQuestions(payload, { agent: request?.agent, ...(execOptions ?? {}) })
     } catch (error) {
       warn(`原生提问桥问询异常（返回未作答，绝不让宿主被吞）: ${error instanceof Error ? error.message : String(error)}`)

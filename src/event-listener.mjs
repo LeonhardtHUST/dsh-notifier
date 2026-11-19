@@ -157,6 +157,7 @@ export function intentOfSessionEvent(event, strings = stringsOf()) {
         event: 'approval/asked',
         kind: 'approval',
         category: BASELINE_CATEGORIES.APPROVAL,
+        ...(typeof data.callId === 'string' ? { callId: data.callId } : {}),
         headline: strings.approval.headline,
         level: 'timeSensitive',
         detail: strings.approval.detail(tool, reason),

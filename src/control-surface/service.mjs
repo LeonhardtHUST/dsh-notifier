@@ -119,6 +119,7 @@ export function createControlSurfaceService({
   launchTickets,
   adminLocation,
   local,
+  sessionNotifications,
 } = {}) {
   const revisionView = () => {
     const current = revision.current()
@@ -313,6 +314,15 @@ export function createControlSurfaceService({
           hotApplied: result?.applied === true,
         })
         return ok(result)
+      }
+
+      if (['notifications.get', 'notifications.save', 'notifications.mute'].includes(method)) {
+        const operation = method.slice('notifications.'.length)
+        if (typeof sessionNotifications?.[operation] !== 'function') {
+          throw Object.assign(new Error('会话通知设置不可用'), { code: 'not-supported' })
+        }
+        const value = sessionNotifications[operation](payload ?? {})
+        return ok({ ...revisionView(), ...value })
       }
 
       if (method === 'tasks.list') {

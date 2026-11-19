@@ -292,8 +292,9 @@ export function createQuestionBridge(deps, strings) {
   }
 
   /** 推一个问题：选项卡片为主（单选按钮），编号文案只发卡片未送达的渠道（兜底）。 */
-  async function pushQuestion(qKey, token, question, allowChats = null, isCancelled = null) {
-    const title = t.cardTitle(String(question.question).slice(0, 60))
+  async function pushQuestion(qKey, token, question, allowChats = null, isCancelled = null, meta) {
+    const headline = t.cardTitle(String(question.question).slice(0, 60))
+    const title = meta ? notifier?.sessionTitle?.(headline, meta) ?? headline : headline
     const context = String(question.context ?? '').trim()
     const content = [
       context !== '' ? context : t.noContextPrompt,
@@ -364,10 +365,10 @@ export function createQuestionBridge(deps, strings) {
     let deliveredTextTypes = []
     if (textTypes.length > 0 && !(typeof isCancelled === 'function' && isCancelled() === true)) {
       const outcome = await notifier.notifyAll({
-        title,
+        title: headline,
         content: `${content}\n\n${numberedHint(options, isMulti, t)}`,
         level: 'timeSensitive',
-      }, { channelTypes: textTypes }).catch(() => null)
+      }, { channelTypes: textTypes, ...(meta ?? {}) }).catch(() => null)
       // notifyAll 的 ok=true 也可能代表空目标/静音；只有返回 delivered 中的
       // 渠道才算真正留下编号兜底证据，失败或未知返回一律 fail-closed。
       if (outcome !== null && Array.isArray(outcome.delivered)) {
@@ -979,6 +980,11 @@ export function createQuestionBridge(deps, strings) {
     const results = []
     let allAnswered = true
     const agentId = execContext?.agent?.id ?? execContext?.agent?.session?.id ?? execContext?.session?.id ?? null
+    const session = execContext?.agent?.session ?? execContext?.session ?? execContext?.agent
+    const delivery = notifier?.sessionNotificationsEnabled === true && typeof session?.id === 'string'
+      ? { category: 'session.survey', sessionId: session.id, sessionTitle: deps.sessionTitleOf?.(session), remoteOnly: true }
+      : undefined
+    const canSendRemote = () => notifier?.canSendRemote?.(delivery) !== false
     for (const question of questions) {
       if (disposed || execContext.signal?.aborted === true) {
         results.push({ question: String(question?.question ?? ''), answered: false, reason: 'stopped' })
@@ -1046,8 +1052,8 @@ export function createQuestionBridge(deps, strings) {
         let hintTargets = []
         let escalationTargets = []
         const runPush = async () => {
-          if (deliverySettled) return // 取消/终态后不再启动投递
-          const pushResult = await pushQuestion(qKey, token, question, allowChats, () => deliverySettled)
+          if (deliverySettled || !canSendRemote()) return // 取消/终态或策略不允许时不再启动投递
+          const pushResult = await pushQuestion(qKey, token, question, allowChats, () => deliverySettled || !canSendRemote(), delivery)
           // 临界窗口：终态先到（用户在 webFirstMs 边缘作答）——pushedTo 仍落账，供
           // markResolved 更新已推卡片；但不再启动 Stage 2 升级。
           pushedTo = pushResult.pushedTo
@@ -1070,7 +1076,9 @@ export function createQuestionBridge(deps, strings) {
           escalationTargets = pushResult.escalationTargets
           const startedAt = Date.now()
           escalation.start(qKey, (_key, stage) => {
-            const text = t.escalationText(String(question.question ?? '').slice(0, 40), stage.note ?? t.escalationWaitingFallback, Math.round((Date.now() - startedAt) / 1000))
+            if (!canSendRemote()) return
+            const title = String(question.question ?? '').slice(0, 40)
+            const text = t.escalationText(delivery ? notifier?.sessionTitle?.(title, delivery) ?? title : title, stage.note ?? t.escalationWaitingFallback, Math.round((Date.now() - startedAt) / 1000))
             // 升级提醒必须逐目标发送。按 channelTypes 调 notifyAll 仍会覆盖同渠道的
             // 其他 chat/user；没有精确目标时 fail-closed，不向全局渠道广播。
             const sends = Array.isArray(escalationTargets) ? escalationTargets.map(async ({ inbound, target }) => {

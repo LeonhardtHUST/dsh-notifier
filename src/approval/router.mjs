@@ -325,8 +325,10 @@ export function registerApprovalHandler(deps, strings) {
     return targets
   }
 
-  async function pushApproval(key, token, request, channelTypes, targetsByChannel) {
-    const title = t.approval.cardTitle(request.toolName)
+  const canSendRemote = meta => notifier?.canSendRemote?.(meta) !== false
+  async function pushApproval(key, token, request, channelTypes, targetsByChannel, meta) {
+    const headline = t.approval.cardTitle(request.toolName)
+    const title = meta ? notifier?.sessionTitle?.(headline, meta) ?? headline : headline
     // S-05：reason 是 agent 生成文本，minimal（默认）打码密钥形态后外发
     const rawReason = typeof request.reason === 'string' && request.reason !== '' ? request.reason : t.approval.reasonFallback
     const reason = redaction === 'minimal' ? maskSecrets(rawReason) : rawReason
@@ -354,6 +356,7 @@ export function registerApprovalHandler(deps, strings) {
       if (inbound === undefined) continue
       let anySuccess = false
       for (const target of kept) {
+        if (!canSendRemote(meta)) break
         const card = await inbound.sendApprovalCard({
           chatId: target.chatId,
           title,
@@ -369,7 +372,7 @@ export function registerApprovalHandler(deps, strings) {
           anySuccess = true
           pushedTo.push({ channel, ...(inbound.accountId === undefined ? {} : { accountId: String(inbound.accountId ?? '') }), chatId: target.chatId, userId: target.userId, messageId: card.messageId })
           persistPushed()
-        } else if (card?.downgraded !== true && await inbound.sendText(target.chatId, fallbackText)) {
+        } else if (card?.downgraded !== true && canSendRemote(meta) && await inbound.sendText(target.chatId, fallbackText)) {
           // Native renderer failure gets a direct per-chat text fallback. This target is
           // authorization evidence; channel-level notifier broadcasts are never evidence.
           hintTargets.push({ channel, ...(inbound.accountId === undefined ? {} : { accountId: String(inbound.accountId ?? '') }), chatId: target.chatId, userId: target.userId })
@@ -400,14 +403,14 @@ export function registerApprovalHandler(deps, strings) {
     if (broadcastTypes !== null && broadcastTypes.length === 0) return { pushedTo, hintTargets }
     // G-34（D5）：早到的裁决（waiter 预注册窗口内用户已点卡）已把行翻终态——广播文本
     // 此时只会造成"已批卡片 + 还在等待批准"双响，直接抑制。
-    if (textLineSuppressed(key)) return { pushedTo, hintTargets }
+    if (textLineSuppressed(key) || !canSendRemote(meta)) return { pushedTo, hintTargets }
     await notifier.notifyAll({
-      title,
+      title: headline,
       content: `${content}\n\n${channelNotes.length > 0
         ? t.approval.broadcastWithNotes(channelNotes)
         : t.approval.broadcastNoButtons}`,
       level: 'timeSensitive',
-    }, broadcastTypes !== null ? { channelTypes: broadcastTypes } : {}).catch(() => {})
+    }, { ...(broadcastTypes !== null ? { channelTypes: broadcastTypes } : {}), ...(meta ?? {}) }).catch(() => {})
     return { pushedTo, hintTargets }
   }
 
@@ -537,6 +540,13 @@ export function registerApprovalHandler(deps, strings) {
   const handler = async (request, next) => {
     const key = `ap:${request?.callId ?? request?.toolName ?? 'unknown'}:${(counter += 1)}`
     try {
+      const session = request?.agent?.session ?? request?.agent
+      const meta = notifier?.sessionNotificationsEnabled === true && typeof session?.id === 'string'
+        ? { category: 'session.approval', sessionId: session.id, sessionTitle: deps.sessionTitleOf?.(session), remoteOnly: true }
+        : undefined
+      // No mobile answerer is available to this request under the user's rule.
+      // Hand control back immediately, rather than waiting for a card that won't be sent.
+      if (!canSendRemote(meta)) return next()
       const token = vault.mint(key)
       // 分流一次解析、全程复用（v0.6.4：pushApproval 落账与升级链共用同一份结果，
       // 原二处各自 resolve 在 agent 绑定轮转瞬间可能不一致）。
@@ -590,7 +600,8 @@ export function registerApprovalHandler(deps, strings) {
           () => { liveWaiters.delete(key) },
         )
       }
-      const delivery = await pushApproval(key, token, request, channelTypes, targetsByChannel)
+      if (meta) deps.claimRemoteAttention?.(meta.category, meta.sessionId, request.callId)
+      const delivery = await pushApproval(key, token, request, channelTypes, targetsByChannel, meta)
       const pushedTo = delivery.pushedTo
       const row = ledger.get(key)
       if (row !== undefined && row.status === 'pending') {
@@ -641,12 +652,12 @@ export function registerApprovalHandler(deps, strings) {
       escalation.start(key, (_key, stage) => {
         // G-34（D5）：升级链文本同样受 5min 抑制——卡片已裁决的审批不再"仍在等待批准"
         // （escalation.stop 在裁决后调用，这里兜住 stop 前的已触发 stage 竞态）。
-        if (textLineSuppressed(key)) return
+        if (textLineSuppressed(key) || !canSendRemote(meta)) return
         notifier.notifyAll({
           title: t.approval.escStillWaiting(request?.toolName),
           content: t.approval.escContent(stage.note ?? t.approval.escNoteFallback, Math.round((Date.now() - startedAt) / 1000), cardChannelNames),
           level: stage.level ?? 'timeSensitive',
-        }, channelTypes !== null ? { channelTypes } : {}).catch(() => {})
+        }, { ...(channelTypes !== null ? { channelTypes } : {}), ...(meta ?? {}) }).catch(() => {})
       })
 
       const decision = await decisionPromise

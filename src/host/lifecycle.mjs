@@ -473,6 +473,7 @@ export function intentOfSurveyToolCall(event, strings = ZH) {
     event: 'tool/call',
     kind: 'survey',
     category: 'session.survey',
+    callId: data.callId,
     headline: strings.survey.headline,
     level: 'timeSensitive',
     detail: strings.survey.detail,
