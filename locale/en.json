@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Notification",
+    "description": "Sends DSH notifications to 28 outbound channels and handles approvals, questions and remote session control through inbound channels. Configure it in Notify & Control."
+  }
+}

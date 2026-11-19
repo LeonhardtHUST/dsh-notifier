@@ -17,12 +17,14 @@
       "default": "./types/index.d.ts"
     },
     "./package.json": "./package.json",
-    "./client": "./client.js"
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "src",
     "test",
     "types",
+    "locale/*.json",
     "scripts/channel-login.mjs",
     "scripts/channel-selfcheck.mjs",
     "scripts/gen-channel-matrix.mjs",
