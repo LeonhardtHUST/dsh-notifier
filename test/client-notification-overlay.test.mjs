@@ -87,6 +87,32 @@ test('plugin-owned activation waits for authenticated baseline, validates ID and
   cleanup(); assert.equal(listeners.size, 0)
 })
 
+test('attention remote settings exclude Default and cancellation has a localized label', () => {
+  const h = harness(); const rules = Object.fromEntries(['session.approval', 'session.survey', 'session.cancelled'].map(category => [category, { overlay: 'focused', system: 'always', remote: 'always' }]))
+  const tree = h.NotificationSettings({ ctx: h.ctx, controller: {}, state: { notifications: view(0, [], { settings: { ...settings, rules } }), busy: {} } })
+  const selects = nodes(tree, n => n.type === 'select')
+  for (const name of ['Approval required', 'Question required']) {
+    const options = selects.find(n => n.props['aria-label'] === `${name}: Remote`).children.flat()
+    assert.deepEqual(options.map(n => n.props.value), ['always', 'focused', 'away', 'never'])
+  }
+  assert.equal(selects.find(n => n.props['aria-label'] === 'Session cancelled: Remote').children.flat().length, 5)
+})
+test('explicit notification navigation supersedes startup restoration before opening a session', () => {
+  const h = harness(); const events = []
+  h.ctx.layout = { beginNavigation: () => events.push('cancel startup restoration') }
+  h.ctx.uiWorkspace.openSession = id => events.push(`open ${id}`)
+  const c = h.createController(h.ctx); c.openNotice(item(1))
+  assert.deepEqual(events, ['cancel startup restoration', 'open s1']); c.dispose()
+})
+test('concurrent focus baselines cannot race duplicate responses or move the cursor backwards', async () => {
+  let resolvePending; let count = 0
+  const h = harness({ call: () => ++count === 1 ? new Promise(resolve => { resolvePending = resolve }) : view(10) })
+  const c = h.createController(h.ctx)
+  const initial = c.loadNotifications(); const firstFocus = c.loadNotifications({ baseline: true }); const secondFocus = c.loadNotifications({ baseline: true })
+  resolvePending(view(1, [item(1)])); await Promise.all([initial, firstFocus, secondFocus])
+  assert.equal(h.calls.length, 2); assert.equal(c.getSnapshot().notifications.cursor, 10); assert.equal(c.getSnapshot().notices.length, 0); c.dispose()
+})
+
 test('placement respects host caption clearance, pointer passthrough and reduced motion', () => {
   const h = harness()
   assert.match(h.CSS, /top:var\(--dsh-frame-overlay-top,20px\)/)

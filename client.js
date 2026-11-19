@@ -244,7 +244,7 @@ window.__ModuleLoader__.load({
       zh: { notifications: '通知投递', overlay: '界面浮层', system: '系统', remote: '远程', always: '始终', focused: '有焦点时', away: '离开时', never: '不投递', default: '跟随在场状态', position: '位置', animation: '动画', stack: '堆叠通知', stackDirection: '堆叠方向', down: '向下', up: '向上', mute: '静音此会话', unmute: '取消静音', muted: '已静音会话', muteMinutes: '静音档位（分钟，逗号分隔；always 表示永久）', close: '关闭通知', open: '打开会话', noneMuted: '暂无已静音会话', unavailable: '通知设置暂不可用', forever: '永久', until: '截止', saved: '已保存', categories: '按分类投递' },
     }
     const CATEGORY_NAMES = {
-      'session.completed': ['Session completed', '会话完成'], 'session.error': ['Session error', '会话错误'], 'session.started': ['Session started', '会话开始'], 'session.status': ['Session status', '会话状态'], 'session.approval': ['Approval required', '等待审批'], 'session.survey': ['Question required', '等待回答'], 'session.message': ['Manual notification', '手动通知'],
+      'session.cancelled': ['Session cancelled', '会话取消'], 'session.completed': ['Session completed', '会话完成'], 'session.error': ['Session error', '会话错误'], 'session.started': ['Session started', '会话开始'], 'session.status': ['Session status', '会话状态'], 'session.approval': ['Approval required', '等待审批'], 'session.survey': ['Question required', '等待回答'], 'session.message': ['Manual notification', '手动通知'],
       'todo.completed': ['Todo completed', '待办完成'], 'todo.cancelled': ['Todo cancelled', '待办取消'], 'todo.changed': ['Todo changed', '待办变更'], 'todo.paused': ['Todo paused', '待办暂停'], 'goal.completed': ['Goal completed', '目标完成'], 'goal.cancelled': ['Goal cancelled', '目标取消'], 'goal.changed': ['Goal changed', '目标变更'], 'goal.paused': ['Goal paused', '目标暂停'],
       'top-left': ['Top left', '左上'], 'top-center': ['Top center', '上方居中'], 'top-right': ['Top right', '右上'], 'bottom-left': ['Bottom left', '左下'], 'bottom-center': ['Bottom center', '下方居中'], 'bottom-right': ['Bottom right', '右下'], left: ['From right', '从右侧进入'], right: ['From left', '从左侧进入'], fade: ['Fade', '淡入'], none: ['None', '无'],
     }
@@ -357,11 +357,12 @@ window.__ModuleLoader__.load({
 
       async function loadNotifications({ baseline = false } = {}) {
         if (baseline) { noticeBaseline = true; noticeGeneration += 1 }
+        const generation = noticeGeneration
         if (notificationRequest) {
           if (!baseline) return notificationRequest
-          await notificationRequest.catch(() => {})
+          const previous = await notificationRequest.catch(() => undefined)
+          if (disposed || generation !== noticeGeneration) return previous
         }
-        const generation = noticeGeneration
         const reset = noticeBaseline || noticeCursor === undefined
         const request = rpc.call('notifications.get', reset ? {} : { after: noticeCursor, epoch: noticeEpoch }).then(value => {
           if (disposed || generation !== noticeGeneration) return value
@@ -683,6 +684,8 @@ window.__ModuleLoader__.load({
         openNotice(row) {
           try {
             if (!row?.sessionId || typeof ctx.uiWorkspace?.openSession !== 'function') throw new Error('Session navigation unavailable')
+            // Explicit navigation supersedes an in-flight startup workspace restoration.
+            ctx.layout?.beginNavigation?.()
             ctx.uiWorkspace.openSession(row.sessionId)
             emit({ notices: snapshot.notices.filter(item => item.id !== row.id) })
             return true
@@ -1427,7 +1430,7 @@ window.__ModuleLoader__.load({
           select('stackDirection', options.stackDirection, ['down', 'up'], value => save({ overlay: { stackDirection: value } }))),
         h(Section, { title: label('categories') }, h('div', { className: 'dn-matrixScroll' }, h('table', { className: 'dn-deliveryMatrix' },
           h('thead', null, h('tr', null, h('th', null, ''), ...['overlay', 'system', 'remote'].map(destination => h('th', { key: destination, scope: 'col' }, label(destination))))),
-          h('tbody', null, ...Object.entries(settings.rules ?? {}).map(([category, rule]) => h('tr', { key: category }, h('th', { scope: 'row' }, label(category)), ...['overlay', 'system', 'remote'].map(destination => h('td', { key: destination }, h('select', { 'aria-label': `${label(category)}: ${label(destination)}`, value: rule[destination], disabled: busy, onChange: event => save({ rules: { [category]: { [destination]: event.target.value } } }) }, ...(destination === 'remote' ? ['default', 'always', 'focused', 'away', 'never'] : ['always', 'focused', 'away', 'never']).map(mode => h('option', { key: mode, value: mode }, label(mode)))))))))))),
+          h('tbody', null, ...Object.entries(settings.rules ?? {}).map(([category, rule]) => h('tr', { key: category }, h('th', { scope: 'row' }, label(category)), ...['overlay', 'system', 'remote'].map(destination => h('td', { key: destination }, h('select', { 'aria-label': `${label(category)}: ${label(destination)}`, value: rule[destination], disabled: busy, onChange: event => save({ rules: { [category]: { [destination]: event.target.value } } }) }, ...(destination === 'remote' && !['session.approval', 'session.survey'].includes(category) ? ['default', 'always', 'focused', 'away', 'never'] : ['always', 'focused', 'away', 'never']).map(mode => h('option', { key: mode, value: mode }, label(mode)))))))))))),
         h(Section, { title: label('muted') },
           h('label', { className: 'dn-field' }, label('muteMinutes'), h('input', { value: durationDraft ?? settings.muteMinutes.join(', '), disabled: busy, onChange: event => setDurationDraft(event.target.value) })),
           h(Button, { disabled: busy || durationDraft === null, onClick: () => {

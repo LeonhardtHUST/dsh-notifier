@@ -4,6 +4,7 @@
 - Agent: `overlay`
 - Branch: `codex/session-notifications`
 - Status: `done`
+- Review follow-up: Added localized session cancellation and removed remote Default from approval/survey rows. Explicit session opening now calls public `layout.beginNavigation()` before `uiWorkspace.openSession()`; installed host navigation source shows this aborts in-flight async startup restoration, while restoration not yet started observes the main reference and skips. Concurrent baseline refreshes now retain their request generation across awaits, so a superseded focus refresh cannot issue a duplicate request or move the cursor backward. Added three behavior tests; final focused suites pass 36/36 and client syntax passes. Reviewer notified of confirmed startup race and fix. Neat-freak checklist reread; only owned workstream updated, user-facing integration documentation remains lead-owned.
 - Start/end: `2026-11-19 -> 2026-11-19`
 - Scope: Client notification overlay and Native notification settings only.
 - Plan: Inspect existing client, installed host contracts and unitary-ui interaction examples; implement overlay placement, animation, stack controls and session navigation; add per-session mute actions and Native policy/mute settings against lead-provided RPC contracts; challenge stale events, disposal, keyboard access and titlebar safety; run focused and full validation.
