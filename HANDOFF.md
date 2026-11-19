@@ -1,51 +1,31 @@
 # dsh-notifier 当前交接快照
 
-更新时间：2026-11-18。维护仓库 `LeonhardtHUST/dsh-notifier`，发布包 `@leonhardthust/dsh-notifier`；上游 `THEWOLFWALKER/dsh-notifier` 的署名与历史发布保持不变。
+更新时间：2026-11-19。维护 fork：`LeonhardtHUST/dsh-notifier`；npm：`@leonhardthust/dsh-notifier`。上游署名与历史发布保持不变。
 
 ## 任务状态 type:state
 
-- `0.14.2` 待发布；通知偏好、来源标签、焦点浮层、远程抑制和 Windows Toast 延迟修复已集成。`0.14.1` 不可变 tag 仍指向 `58507ac`；npm latest、GitHub Release、OIDC provenance 与 registry tarball 已核对。
-- 已实现 Native 面板滚动、本机/远程通知入口分离、Windows 10/11 WinRT Toast、Linux notify-send/gdbus 回落。
-- `local.get`/`local.save` 复用 canonical 出站事务；YAML 管理不能从 UI 关闭。撤销不会被启动快照复活；来源读失败报 storage-failed。
-- `engines.dsh` 仍为精确 `0.2.2-rc.3`；无新增强制运行时依赖，无新增监听器或认证模式。
+- 最新已发布版本是 `0.14.2`，不可变 tag `v0.14.2` 指向 `128f7f5`。新会话通知在 `codex/session-notifications`，未发布、未修改运行中的 Desktop profile。
+- 宿主要求仍是精确 `0.2.2-rc.3`；未增加运行时依赖、监听端口或鉴权方式。
 
-| 测试 | `npm test` **2175 tests**（2175 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，并发上限4） |
+| 项目 | 已发布基线（0.14.2） |
+| --- | --- |
+| 测试 | `npm test` **2175 tests**（2175 通过，0 失败，0 跳过） |
 
-## 当前开发线：通知来源与远程抑制（未发布）type:progress
+## 当前开发线 type:progress
 
-- 自动事件通知标题现在带 `[workspace]` 或短 session 标签；来源元数据会清理控制/方向字符、脱敏并按码点截断，主动 `notify` 工具标题保持不变。
+- `cd0afb4`、`d075799`、`82862fc`：宿主 todo/goal 与待审批/提问事件；区分即时结算和 timed pending，todo 暂停/取消由快照推断。
+- `834872a`、`18eaa2b`、`914a4fc`：全局浮层、标题栏安全区、会话跳转、分类设置和静音管理；修复焦点基线、启动导航竞争、键盘/静音菜单误消失和卡片就地反馈。
+- `90f3212`、`8dc87b7`：原生会话操作；Linux 异步操作观察不算已接受，保留远程兜底；Windows 不写注册表/快捷方式。
+- `c945d13`：统一投递与会话静音事务、认证 RPC、精确交互处理器归属。认领用于避免重复通用提醒，不代表卡片送达，不改变裁决授权。
+- `d6206bf`：中英文指南、架构、运维、发布基线和变更日志更新。详细审查和验证见 `.agents/workstreams/session-notifications.md`。
 
+## 验证与限制 type:dead-end
 
-- 新增 `local.presence.report` / `local.policy.save` Native RPC；策略持久化在独立 state key `local:remote-suppression`，默认 focus/unlock/wake 全开。
-- 事件自动通知命中策略时保留本机 desktop/bell、跳过远程；只有目标里存在 desktop 才抑制，桌面通知未启用时远程发送不变。
-- Web 只上报窗口可见/焦点；unlock 必须由客户端显式声明能力（当前 DSH Desktop 渲染层没有系统锁屏桥，面板明示该项暂不生效）；唤醒由主机 timer gap 与桌面壳长间隙上报。
-- 回归：`npm test` **2175/2175**（隔离 `DSH_HOME`，并发 4）；远程兜底、动作卡抑制、presence 投影和焦点浮层生命周期审查问题已修复。详见 `.agents/workstreams/local-remote-suppression.md`。
+- 隔离 `DSH_HOME`、hermetic 网络、并发上限 4：`npm test` 2229 项，2228 通过、0 失败、1 个既有 Windows symlink 用例跳过。release guard、渠道矩阵、Host/Client 语法与 diff 检查通过。
+- 已安装 rc.3 的 `dsh-app://app` 会将 `/dsh-notifier` 的非静态路径转发至已认证 HTTP Host。该结论是宿主源码证据，不是实机交互验证。
+- Windows Toast 的会话按钮打开受信 loopback Web；没有原生静音按钮。Linux 动作受 libnotify/通知服务支持约束。macOS、Windows 气球回落为纯通知。跨会话摘要、第三方不带会话的通知、测试通知无可跳转会话。
 
-## 当前开发线：通知来源标题（未发布）type:progress
+## 下一步 type:goal
 
-- `intentToMessage` 接受可选 session，自动通知标题使用 `titlePrefix [workspace] 原标题`；工作区名限制为 48 码点，无工作区时使用 8 码点 session id，无来源时兼容旧标题。所有自动事件和动作卡片共用此路径，主动 `notify` 标题/正文不变。
-- 标签去除换行、控制字符和方向字符，将方括号转为圆括号；`minimal` 模式先脱敏再按码点截断。恶意标签、空工作区、元数据 getter 抛错、中文/英文、emoji 和主动工具隔离均有回归。
-- 已验证 focused **88/88**（event-listener、lang-strings、redact、tool-register）；完整 `npm test` **2175/2175，0 fail，0 skip**（隔离临时 `DSH_HOME`，并发 4）。审查后补充了 desktop 失败远程兜底、动作卡抑制、presence 投影一致性、Web presence 主机边界和浮层基线/timer 生命周期；未改真实 profile，未新增设备投递证据。
-- 实现提交 `78758a1` 已推送维护 fork 的 `codex/desktop-notify-scroll`，task-7 已 complete。范围与审查记录：`.agents/workstreams/notification-source-title.md`；队长仍需收口共享工作树内的英文预期与其他工作流变更。
-
-## 验证与审查
-
-- 独立 Sol 静态审查指出的空文本编码、配置撤销、YAML 无选项行、读失败假成功、开关禁用及诊断泄漏均已修复，并有回归覆盖。
-- 最终完整回归 2137/2137，0 fail、0 skip。release/host/channel-matrix/syntax/payload 门禁均通过；npm dry-run payload 322 文件，无开发工具目录。
-- Windows 11 26H2：真实 WinRT Toast 成功，归属 `com.deepseek.dsh`；恶意文本作为字面量存入通知 XML；静音 XML、空文本及最大长度脚本均在 PowerShell 5.1 验证。
-- Chromium 复刻已安装 rc3 的 main slot 高度约束：旧布局 clientHeight=1532、scrollTop=0；新布局 clientHeight=565、scrollHeight=1532、scrollTop=400。
-
-## 失败与弯路 type:dead-end
-
-- Get-StartApps 探测 → 本机耗时 11–17 秒，已改为只检查 DSH 开始菜单快捷方式存在性并按冻结配置缓存。
-- 并发运行多个全量套件 → 触发已有短计时测试抖动；最终全量统一串行执行。
-- 直接打开 DSH GUI URL → 需要认证，本线没有宣称已安装新 Native UI 端到端验证，也未修改运行中 profile。
-
-## 发布与下一步 type:progress
-
-- CI `44129363178`：Ubuntu/macOS Node 22 全部通过。Release `44130646586`：验证和 OIDC 完成；npm 处理延迟导致首次后置校验失败，registry 可见后仅重跑失败 job，最终成功且未重复发布。
-- Registry tarball 322 文件，SHA-512 与本地 pack 相同；SLSA statement 指向维护 fork 与 `58507ac1e295165c02ba73caa83b6da47a20806e`。
-- 提交：`dc7106c` 平台通知、`d788898` Native 面板、`9819e90` 使用文档、`58507ac` 发布元数据。
-- 下一步：更新实际 Desktop profile 后，在「通知与控制 → 桌面通知」测试；Linux GNOME/KDE、已认证 Native UI 端到端与真实 IM/provider 仍待补证。
-
-工程入口：AGENTS、docs/KNOWLEDGE_BASE、docs/memory。运行时以 src/test 为准，版本以 package.json 为准。文档/记忆工具未暴露时使用 tracked docs/memory 和 workstream 留存事实。
+- 仅在获得授权后，在单独的测试环境安装此工作树；登录 DSH Desktop，制造两个会话的 todo 完成、等待审批/问卷，验证标题栏可操作、点击打开正确会话、静音一会话不影响另一会话。
+- 真机验证 Windows 通知点击、Linux GNOME/KDE 通知打开/自定义静音回调；专门记录收据与能力，不从协议模拟推断设备送达。

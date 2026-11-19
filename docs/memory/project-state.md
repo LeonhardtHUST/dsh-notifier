@@ -24,6 +24,10 @@
 - Desktop ask_user settlement has no safe host API; do not claim dual-end parity. NotifyIcon fallback cannot enforce mute. Provider limits, rendering and reconnect behavior need real-device evidence.
 - Source/tests are runtime authority; package.json is version authority. Historical release details remain in CHANGELOG and immutable tags, not in this compact snapshot.
 
+## Unreleased development type:progress
+
+- 2026-11-19: `codex/session-notifications` adds one session notification policy, durable per-session mute, actionable overlay, and platform-limited OS actions. Source `c945d13`; validation 2229 total, 2228 pass, 0 fail, 1 Windows symlink skip. See [HANDOFF](../../HANDOFF.md) for review, device gaps and branch history.
+
 ## Next step type:goal
 
-Upgrade the actual Desktop profile through the plugin manager, restart once, then test Desktop notifications and the long Remote channels setup page. Do not restart the active agent session automatically. Linux GNOME/KDE and authenticated Native end-to-end verification remain the next device checks.
+With permission, install the development branch in a separate test profile and exercise an authenticated Desktop overlay, Windows click navigation, and Linux GNOME/KDE action/mute callbacks. Do not restart the active agent session or promote the development branch to a release without authorization.

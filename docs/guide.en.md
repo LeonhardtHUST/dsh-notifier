@@ -96,7 +96,7 @@ Open **Notify & Control → Desktop notifications** and use **Delivery by catego
 
 The matrix routes events that already exist; the existing `events.*` switches still decide whether an event line is emitted.
 
-Follow presence skips remote targets only while this computer has focus and a desktop notification was actually accepted. If the desktop send fails, session mute blocks it, or a Linux action receipt is unverified, the remote targets are sent after all. Approval and question rows cannot use Follow presence because a missed request leaves the agent waiting. If you change their remote mode to When away or Never, the handler returns control to the desktop immediately instead of waiting for a card that will not be sent.
+Follow presence skips remote targets only when an enabled presence condition matches and the desktop notification was accepted. If desktop delivery fails or a Linux action receipt is unverified, eligible remote targets are still tried. A session mute also blocks that fallback. Approval and question rows do not offer Follow presence. When an approval rule disallows remote dispatch, the handler returns control to the desktop immediately rather than waiting for a card it will not send.
 
 Approval and question events wait 1.5 seconds before they are announced, so a request the host settles immediately does not produce a false alert. A timed question that returns `pending: true` stays waiting until the `user-question-reply`. A todo item that leaves the list counts as cancelled, and `in_progress → pending` counts as paused. A goal `clear` counts as cancelled; `block` is grouped under paused, which is off by default.
 
