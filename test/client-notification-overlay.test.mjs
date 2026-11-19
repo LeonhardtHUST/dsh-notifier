@@ -3,22 +3,47 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { readFileSync } from 'node:fs'
 
-function harness({ call, page = { visibilityState: 'visible', hasFocus: () => true }, effects = [] } = {}) {
+function harness({ call, reactive = false, page = { visibilityState: 'visible', hasFocus: () => true }, effects = [] } = {}) {
   let registration
   const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8').replace("inject: ['slots', 'connection', 'locale', 'layout', 'uiWorkspace'],", "__test: { installSessionActivation, createController, NotificationOverlay, NotificationCard, NotificationSettings, allowsOverlay, overlayOptions, CSS }, inject: ['slots', 'connection', 'locale', 'layout', 'uiWorkspace'],")
   const timers = new Map()
   let timerId = 0
+  let hookIndex = 0
+  const hookStates = []
+  const hookEffects = []
+  const pendingEffects = []
   const React = {
     Component: class {}, createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
     useCallback: fn => fn, useMemo: fn => fn(), useRef: value => ({ current: value }),
     useState: value => [value, () => {}], useEffect: fn => effects.push(fn), useSyncExternalStore: (_, read) => read(),
   }
   vm.runInNewContext(source, { window: { __ModuleLoader__: { load: value => { registration = value } } }, document: page, setInterval: () => 1, clearInterval() {}, setTimeout: fn => { timers.set(++timerId, fn); return timerId }, clearTimeout: id => timers.delete(id), AbortController, console })
+  if (reactive) {
+    React.useState = initial => {
+      const index = hookIndex++
+      if (!(index in hookStates)) hookStates[index] = initial
+      return [hookStates[index], value => { hookStates[index] = typeof value === 'function' ? value(hookStates[index]) : value }]
+    }
+    React.useEffect = (fn, deps) => {
+      const index = hookIndex++
+      const previous = hookEffects[index]
+      if (!previous || deps.some((value, i) => value !== previous.deps[i])) pendingEffects.push(() => {
+        previous?.cleanup?.()
+        hookEffects[index] = { deps, cleanup: fn() }
+      })
+    }
+  }
+  const render = (component, props) => {
+    hookIndex = 0
+    const tree = component(props)
+    pendingEffects.splice(0).forEach(fn => fn())
+    return tree
+  }
   const mod = registration.factory(name => { assert.equal(name, 'react'); return React })
   const calls = []
   const opened = []
   const ctx = { locale: { current: 'en' }, uiWorkspace: { openSession: id => opened.push(id) }, connection: { rpc: { call: async (_, endpoint, payload) => { calls.push({ endpoint, payload: JSON.parse(JSON.stringify(payload)) }); return { ok: true, value: await call?.(endpoint, payload) } } } } }
-  return { ...mod.__test, ctx, calls, opened, timers, effects }
+  return { ...mod.__test, ctx, calls, opened, timers, effects, render }
 }
 const settings = { rules: { 'session.completed': { overlay: 'focused', system: 'always', remote: 'default' } }, overlay: { position: 'top-right', animation: 'down', stack: true, stackDirection: 'down' }, muteMinutes: [5, 30, 'always'] }
 const item = (id, mode = 'focused', sessionId = 's1') => ({ id, sessionId, sessionTitle: 'Session', title: 'Done', body: 'Result', category: 'session.completed', mode, createdAt: Date.now() })
@@ -111,6 +136,31 @@ test('concurrent focus baselines cannot race duplicate responses or move the cur
   const initial = c.loadNotifications(); const firstFocus = c.loadNotifications({ baseline: true }); const secondFocus = c.loadNotifications({ baseline: true })
   resolvePending(view(1, [item(1)])); await Promise.all([initial, firstFocus, secondFocus])
   assert.equal(h.calls.length, 2); assert.equal(c.getSnapshot().notifications.cursor, 10); assert.equal(c.getSnapshot().notices.length, 0); c.dispose()
+})
+
+test('pointer leave cannot expire a keyboard-focused card or an open mute menu', () => {
+  const h = harness({ reactive: true }); const dismissed = []
+  const props = { ctx: h.ctx, controller: { dismissNotice: id => dismissed.push(id) }, row: item(1), options: h.overlayOptions({}), minutes: [5], busy: false }
+  const render = () => h.render(h.NotificationCard, props)
+  let tree = render(); assert.equal(h.timers.size, 1)
+  tree.props.onFocus(); tree = render(); assert.equal(h.timers.size, 0)
+  tree.props.onMouseEnter(); tree = render(); tree.props.onMouseLeave(); tree = render(); assert.equal(h.timers.size, 0)
+  nodes(tree, n => n.type === 'details')[0].props.onToggle({ currentTarget: { open: true } }); tree = render()
+  tree.props.onBlur({ currentTarget: { contains: () => false }, relatedTarget: null }); tree = render(); assert.equal(h.timers.size, 0)
+  tree.props.onMouseLeave(); tree = render(); assert.equal(h.timers.size, 0)
+  nodes(tree, n => n.type === 'details')[0].props.onToggle({ currentTarget: { open: false } }); render(); assert.equal(h.timers.size, 1)
+  h.timers.values().next().value(); assert.deepEqual(dismissed, [1])
+})
+test('failed open and mute remain visible on their card with generic redacted errors', async () => {
+  const h = harness({ reactive: true }); const props = { ctx: h.ctx, controller: { openNotice: () => false, muteSession: async () => { throw Error('secret=token') }, dismissNotice() {} }, row: item(1), options: h.overlayOptions({}), minutes: [5], busy: false }
+  const render = () => h.render(h.NotificationCard, props)
+  let tree = render(); const open = nodes(tree, n => n.props.className === 'dn-noticeOpen')[0]
+  assert.match(open.props['aria-label'], /Done/); assert.equal(open.props['aria-describedby'], 'dn-notice-body-1')
+  open.props.onClick(); tree = render()
+  assert.match(nodes(tree, n => n.props.role === 'alert')[0].children[0], /Action failed/); assert.equal(h.timers.size, 0)
+  await nodes(tree, n => n.type === 'button' && n.children[0] === '5 min')[0].props.onClick(); tree = render()
+  const message = nodes(tree, n => n.props.role === 'alert')[0].children[0]
+  assert.match(message, /retry/); assert.doesNotMatch(message, /secret|token/); assert.equal(h.timers.size, 0)
 })
 
 test('placement respects host caption clearance, pointer passthrough and reduced motion', () => {

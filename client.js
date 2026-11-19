@@ -27,6 +27,7 @@ window.__ModuleLoader__.load({
       setupFirst: '设置第一个远程通知渠道',
       desktopTitle: '桌面通知',
       desktopIntro: '在这台电脑上弹出系统通知，只在本机显示，不经过任何网络服务。',
+      notificationSettingsHint: '系统通知、分类投递规则与已静音会话。',
       desktopToggle: '在这台电脑上显示通知',
       desktopOn: '已开启',
       desktopOff: '未开启',
@@ -49,8 +50,8 @@ window.__ModuleLoader__.load({
       suppressWakeHint: '唤醒后的 5 分钟内。',
       suppressWebNote: 'Web 版只能把窗口可见与焦点作为依据。',
       suppressDesktopOff: '桌面通知未开启：远程发送保持不变。',
-      suppressActive: '正在抑制远程通知',
-      suppressIdle: '远程通知正常发送',
+      suppressActive: '“跟随在场状态”的远程通知已抑制',
+      suppressIdle: '“跟随在场状态”的远程通知未抑制',
       suppressUnavailable: '当前服务不支持远程抑制设置。',
       otherLocal: '其他本机提醒',
       bellTitle: '终端响铃',
@@ -133,6 +134,7 @@ window.__ModuleLoader__.load({
       setupFirst: 'Set up your first remote channel',
       desktopTitle: 'Desktop notifications',
       desktopIntro: 'Show system notifications on this computer. They stay on this device and use no network service.',
+      notificationSettingsHint: 'System notifications, category delivery rules and muted sessions.',
       desktopToggle: 'Show notifications on this computer',
       desktopOn: 'On',
       desktopOff: 'Off',
@@ -155,8 +157,8 @@ window.__ModuleLoader__.load({
       suppressWakeHint: 'For 5 minutes after wake.',
       suppressWebNote: 'The web build can only use window visibility and focus as evidence.',
       suppressDesktopOff: 'Desktop notifications are off: remote delivery is unchanged.',
-      suppressActive: 'Remote notifications are paused',
-      suppressIdle: 'Remote notifications are active',
+      suppressActive: 'Follow presence remote delivery is paused',
+      suppressIdle: 'Follow presence remote delivery is not suppressed',
       suppressUnavailable: 'This service does not support remote suppression settings.',
       otherLocal: 'Other local alerts',
       bellTitle: 'Terminal bell',
@@ -910,7 +912,7 @@ window.__ModuleLoader__.load({
       h(StateDot, { state: !unsupported && enabled ? 'done' : 'idle' }),
       h('span', { className: 'dn-rowMain' },
         h('strong', { className: 'dn-rowTitle' }, t('desktopTitle')),
-        h('span', { className: 'dn-rowMeta' }, t('desktopIntro'))),
+        h('span', { className: 'dn-rowMeta' }, t('notificationSettingsHint'))),
       h('span', { className: 'dn-rowAside dn-stateText' }, stateText, ' ›'))
     }
 
@@ -1389,7 +1391,25 @@ window.__ModuleLoader__.load({
         ...rows.map(row => h(NotificationCard, { key: `${state.notifications?.epoch}:${row.id}`, ctx, controller, row, options, minutes: state.notifications?.settings?.muteMinutes ?? [5, 10, 15, 30, 'always'], busy: state.busy.notifications === true })))
     }
     function NotificationCard({ ctx, controller, row, options, minutes, busy }) {
-      const [interacting, setInteracting] = useState(false)
+      const [hovered, setHovered] = useState(false)
+      const [focused, setFocused] = useState(false)
+      const [menuOpen, setMenuOpen] = useState(false)
+      const [actionError, setActionError] = useState(null)
+      const [actionPending, setActionPending] = useState(false)
+      const errorText = resolveText(ctx, { en: 'Action failed. Please retry or open Notify & Control.', zh: '操作失败，请重试或打开“通知与控制”。' })
+      const openSession = () => {
+        setActionError(null)
+        try { if (controller.openNotice(row) === false) setActionError(errorText) }
+        catch { setActionError(errorText) }
+      }
+      const muteSession = async value => {
+        setActionError(null)
+        setActionPending(true)
+        try { await controller.muteSession(row.sessionId, value) }
+        catch { setActionError(errorText) }
+        finally { setActionPending(false) }
+      }
+      const interacting = hovered || focused || menuOpen || actionPending || actionError !== null
       useEffect(() => {
         if (interacting) return
         const timer = setTimeout(() => controller.dismissNotice(row.id), 8000)
@@ -1397,17 +1417,18 @@ window.__ModuleLoader__.load({
       }, [row.id, interacting, controller])
       return h('article', {
         className: 'dn-notice', 'data-animation': options.animation,
-        onMouseEnter: () => setInteracting(true), onMouseLeave: () => setInteracting(false),
-        onFocus: () => setInteracting(true),
-        onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) setInteracting(false) },
+        onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false),
+        onFocus: () => setFocused(true),
+        onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false) },
       },
-      h('button', { type: 'button', className: 'dn-noticeOpen', disabled: !row.sessionId, 'aria-label': `${noticeText(ctx, 'open')}: ${row.sessionTitle || row.sessionId || ''}`, onClick: () => controller.openNotice(row) },
-        h('small', null, row.sessionTitle || row.sessionId || ''), h('strong', null, resolveText(ctx, row.title)), h('span', null, resolveText(ctx, row.body))),
+      h('button', { type: 'button', className: 'dn-noticeOpen', disabled: !row.sessionId, 'aria-label': `${noticeText(ctx, 'open')}: ${row.sessionTitle || row.sessionId || ''} — ${resolveText(ctx, row.title)}`, 'aria-describedby': `dn-notice-body-${row.id}`, onClick: openSession },
+        h('small', null, row.sessionTitle || row.sessionId || ''), h('strong', null, resolveText(ctx, row.title)), h('span', { id: `dn-notice-body-${row.id}` }, resolveText(ctx, row.body))),
       h('div', { className: 'dn-noticeActions' },
-        row.sessionId ? h('details', { onToggle: event => setInteracting(event.currentTarget.open) },
+        row.sessionId ? h('details', { onToggle: event => setMenuOpen(event.currentTarget.open) },
           h('summary', { 'aria-label': noticeText(ctx, 'mute') }, noticeText(ctx, 'mute')),
-          h('div', { className: 'dn-muteChoices' }, ...minutes.map(value => h('button', { key: value, type: 'button', disabled: busy, onClick: () => void controller.muteSession(row.sessionId, value).catch(error => controller.reportError(error)) }, value === 'always' ? noticeText(ctx, 'forever') : `${value} min`)))) : null,
-        h('button', { type: 'button', className: 'dn-toastClose', 'aria-label': noticeText(ctx, 'close'), onClick: () => controller.dismissNotice(row.id) }, '×')))
+          h('div', { className: 'dn-muteChoices' }, ...minutes.map(value => h('button', { key: value, type: 'button', disabled: busy || actionPending, onClick: () => muteSession(value) }, value === 'always' ? noticeText(ctx, 'forever') : `${value} min`)))) : null,
+        h('button', { type: 'button', className: 'dn-toastClose', 'aria-label': noticeText(ctx, 'close'), onClick: () => controller.dismissNotice(row.id) }, '×')),
+        actionError ? h('p', { className: 'dn-error', role: 'alert' }, actionError) : null)
     }
 
     function NotificationSettings({ ctx, controller, state }) {
@@ -1435,7 +1456,7 @@ window.__ModuleLoader__.load({
           h('label', { className: 'dn-field' }, label('muteMinutes'), h('input', { value: durationDraft ?? settings.muteMinutes.join(', '), disabled: busy, onChange: event => setDurationDraft(event.target.value) })),
           h(Button, { disabled: busy || durationDraft === null, onClick: () => {
             const values = durationDraft.split(',').map(value => value.trim()).map(value => value === 'always' ? value : Number(value))
-            if (!values.length || values.length > 8 || new Set(values).size !== values.length || values.some(value => value !== 'always' && (!Number.isInteger(value) || value < 1 || value > 10080))) { setDurationError(label('muteMinutes')); return }
+            if (!values.length || values.length > 8 || new Set(values).size !== values.length || values.some(value => value !== 'always' && (!Number.isInteger(value) || value < 1 || value > 10080))) { setDurationError(resolveText(ctx, { en: 'Enter 1–8 unique durations separated by commas: whole minutes from 1 to 10080, or always. Example: 5, 30, always.', zh: '请输入 1–8 个不重复档位，以逗号分隔：1–10080 的整数分钟，或 always（永久）。例如：5, 30, always。' })); return }
             setDurationError(null)
             void controller.saveNotifications({ muteMinutes: values }).then(() => setDurationDraft(null)).catch(error => controller.reportError(error))
           } }, resolveText(ctx, { en: 'Save durations', zh: '保存档位' })),
