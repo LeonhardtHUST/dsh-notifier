@@ -400,11 +400,67 @@ export function mapGoalEvent(state, sessionId, event, strings = ZH) {
 }
 
 /**
+ * 取 `tool/result` 对应的工具调用 id（rc.3：`message.toolCallId`，兼容 `message.source.callId`
+ * 与直接 `data.callId`）。
+ * @returns {string | null}
+ */
+export function toolResultCallId(event) {
+  try {
+    const data = event?.data
+    if (event?.type !== 'tool/result') return null
+    for (const value of [data?.message?.toolCallId, data?.message?.source?.callId, data?.callId]) {
+      if (typeof value === 'string' && value !== '') return value
+    }
+  } catch { /* 载荷不可读按无 callId 处理 */ }
+  return null
+}
+
+/**
+ * rc.3 timed `ask_user_question` 的超时结果不是结算：工具值形如
+ * `{ pending: true, callId, message }`，渲染为 `content[0].text` 的 JSON 文本，
+ * 问题仍可由用户回答（随后以 `user-question-reply` 用户消息到达）。宿主自己的
+ * `dsh-user-questions/src/projection.ts:isPendingResult` 也只看 `pending === true`；
+ * `error.code === 'TOOL_OUTCOME_UNKNOWN'` 同样表示结果未知、仍可回答。识别到这两种
+ * 形态时不能让 `tool/result` 取消待决提醒；普通答案（`{answers:[…]}`）、其他错误与
+ * 无法解析的文本都算结算。
+ * @returns {boolean} true = 仍处于等待，保留提醒
+ */
+export function toolResultKeepsQuestionPending(event, _callId) {
+  try {
+    const data = event?.data
+    if (event?.type !== 'tool/result') return false
+    if (data?.error?.code === 'TOOL_OUTCOME_UNKNOWN') return true
+    const blocks = data?.message?.content
+    if (!Array.isArray(blocks)) return false
+    for (const block of blocks) {
+      if (!isRecord(block) || block.type !== 'text' || typeof block.text !== 'string') continue
+      let value
+      try { value = JSON.parse(block.text) } catch { continue }
+      if (isRecord(value) && value.pending === true) return true
+    }
+  } catch { /* 载荷不可读按已结算处理 */ }
+  return false
+}
+
+/**
+ * rc.3 timed 提问在 pending 结果之后被回答时，答案以 `user/message` 的
+ * `source.kind === 'user-question-reply'` 到达，`source.callId` 与原提问一致。
+ * 用它取消仍在门口的待决提醒，避免用户已经回答还收到「等待回答」。
+ * @returns {string | null}
+ */
+export function userQuestionReplyCallId(event) {
+  try {
+    if (event?.type !== 'user/message') return null
+    const source = event?.data?.source
+    if (!isRecord(source) || source.kind !== 'user-question-reply') return null
+    return typeof source.callId === 'string' && source.callId !== '' ? source.callId : null
+  } catch { return null }
+}
+/**
  * `tool/call` 里被接受的 survey 等待信号：官方 `ask_user_question` 与插件自有 `ask_user`。
  * 不读、不回显 arguments（只报「有一个问题在等待」），避免把提问正文带进通知。
  * 插件自有 `ask_user` 的远程提问由 questions 桥的卡片/编号回复负责，这条通知只补本机
- * 提醒（`localOnly: true`），不让同一问题在远端重复出现；官方工具没有本插件的桥，
- * 按普通会话通知策略投放。
+ * 提醒（`localOnly: true`），不让同一问题在远端重复出现；官方工具按普通会话通知策略投放。
  * @returns {object | undefined} intent
  */
 export function intentOfSurveyToolCall(event, strings = ZH) {

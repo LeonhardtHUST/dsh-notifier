@@ -10,6 +10,9 @@ import {
   diffTodoLists,
   lifecycleStrings,
   normalizeTodoList,
+  toolResultCallId,
+  toolResultKeepsQuestionPending,
+  userQuestionReplyCallId,
 } from '../src/host/lifecycle.mjs'
 
 // ---------------------------------------------------------------- helpers
@@ -146,6 +149,35 @@ test('lifecycleStrings：en 输出英文，未知 lang 回落 zh', () => {
   assert.equal(lifecycleStrings('xx').todo.headline['todo.completed'], '✅ 待办完成')
   assert.equal(lifecycleStrings('en').goal.headline['goal.paused'], '⏸ Goal paused')
   assert.equal(lifecycleStrings('en').survey.headline, '❓ Question needs your input')
+})
+
+test('tool/result 形状：rc.3 timed 提问的 {pending:true,callId} 仍是等待，答案/错误才是结算', () => {
+  const result = (payload, isError = false, callId = 'c1') => ({
+    type: 'tool/result',
+    data: { message: { toolCallId: callId, isError, content: [{ type: 'text', text: JSON.stringify(payload) }] } },
+  })
+  assert.equal(toolResultCallId(result({ pending: true, callId: 'c1' })), 'c1')
+  assert.equal(toolResultCallId({ type: 'tool/result', data: { message: { source: { callId: 'c2' } } } }), 'c2')
+  assert.equal(toolResultCallId({ type: 'tool/result', data: {} }), null)
+  assert.equal(toolResultCallId({ type: 'tool/call', data: { callId: 'c3' } }), null)
+
+  assert.equal(toolResultKeepsQuestionPending(result({ pending: true, callId: 'c1', message: 'continue' }), 'c1'), true)
+  assert.equal(toolResultKeepsQuestionPending(result({ answers: [{ id: 'q1', selected: ['yes'] }] }), 'c1'), false)
+  assert.equal(toolResultKeepsQuestionPending(result({ pending: true, callId: 'c1' }, true), 'c1'), true, '宿主只看 pending，isError 不推翻')
+  assert.equal(toolResultKeepsQuestionPending(result({ pending: true, callId: 'other' }), 'c1'), true, '宿主不比对 callId')
+  assert.equal(toolResultKeepsQuestionPending({
+    type: 'tool/result',
+    data: { error: { code: 'TOOL_OUTCOME_UNKNOWN' }, message: { toolCallId: 'c1', content: [] } },
+  }, 'c1'), true, '结果未知仍可回答')
+  assert.equal(toolResultKeepsQuestionPending(result('not-json'), 'c1'), false)
+  assert.equal(toolResultKeepsQuestionPending(result({ pending: true, callId: 'c1' }), undefined), true)
+
+  assert.equal(userQuestionReplyCallId({
+    type: 'user/message',
+    data: { source: { kind: 'user-question-reply', callId: 'c1', outcome: 'answered' } },
+  }), 'c1')
+  assert.equal(userQuestionReplyCallId({ type: 'user/message', data: { source: { kind: 'user' } } }), null)
+  assert.equal(userQuestionReplyCallId({ type: 'assistant/message', data: {} }), null)
 })
 
 // ---------------------------------------------------------------- todo lifecycle
@@ -403,6 +435,77 @@ test('dispose 会 flush 未到期的待决提醒（进程退出前不丢真实�
   assert.equal(r.messages.length, 0)
   await r.dispose()
   assert.equal(r.messages.length, 1, 'dispose flush 待决审批提醒')
+})
+
+test('timed 提问 pending 结果保留提醒；随后回答或普通答案才取消', async () => {
+  const r = rig({}, { lifecycleSettleMs: 30 })
+  const session = makeSession('survey-pending')
+  const call = (seq, callId) => ({ type: 'tool/call', seq, data: { callId, name: 'ask_user_question', arguments: '{}' } })
+  const pendingResult = (seq, callId) => ({
+    type: 'tool/result',
+    seq,
+    data: { message: { toolCallId: callId, content: [{ type: 'text', text: JSON.stringify({ pending: true, callId, message: 'still answerable' }) }] } },
+  })
+
+  r.emit(session, call(1, 'p1'))
+  r.emit(session, pendingResult(2, 'p1')) // timeout=1 在 1500ms 前返回 pending
+  await tick(60)
+  assert.equal(r.messages.length, 1, 'pending 结果不是结算，提醒照发')
+
+  // pending 之后用户回答：user-question-reply 同 callId 取消门口提醒。
+  r.emit(session, call(3, 'p2'))
+  r.emit(session, {
+    type: 'user/message',
+    seq: 4,
+    data: { source: { kind: 'user-question-reply', callId: 'p2', outcome: 'answered' } },
+  })
+  await tick(60)
+  assert.equal(r.messages.length, 1, '回答到达即取消')
+
+  // 普通答案批（非 pending）仍是结算。
+  r.emit(session, call(5, 'p3'))
+  r.emit(session, {
+    type: 'tool/result',
+    seq: 6,
+    data: { message: { toolCallId: 'p3', content: [{ type: 'text', text: JSON.stringify({ answers: [{ id: 'q', selected: ['yes'] }] }) }] } },
+  })
+  await tick(60)
+  assert.equal(r.messages.length, 1, '普通答案取消')
+
+  // 结果未知（TOOL_OUTCOME_UNKNOWN）与宿主 projection 同口径，按仍可回答处理。
+  r.emit(session, call(7, 'p4'))
+  r.emit(session, {
+    type: 'tool/result',
+    seq: 8,
+    data: { error: { code: 'TOOL_OUTCOME_UNKNOWN' }, message: { toolCallId: 'p4', content: [] } },
+  })
+  await tick(60)
+  assert.equal(r.messages.length, 2, '结果未知不取消提醒')
+})
+
+test('ownsRemoteAttention：只询问 approval/survey；true 时 localOnly；异常/未定义按不归属', () => {
+  const seen = []
+  const r = rig({}, {
+    ownsRemoteAttention: (intent) => {
+      seen.push(intent.category)
+      return intent.category === 'session.approval'
+    },
+  })
+  const session = makeSession('owns-1')
+  r.emit(session, todoEvent(1, [{ content: 'A', status: 'pending' }]))
+  r.emit(session, todoEvent(2, [{ content: 'A', status: 'completed' }]))
+  r.emit(session, { type: 'approval/asked', seq: 1, data: { toolName: 'bash' } })
+  r.emit(session, { type: 'tool/call', seq: 2, data: { callId: 'c1', name: 'ask_user_question', arguments: '{}' } })
+  assert.deepEqual(seen, ['session.approval', 'session.survey'], 'todo 不查询远端归属')
+  assert.equal(r.calls.find((call) => call.category === 'session.approval').localOnly, true)
+  assert.equal(r.calls.find((call) => call.category === 'session.survey').localOnly, undefined)
+
+  for (const owning of [() => undefined, () => false, () => { throw new Error('route down') }]) {
+    const rigged = rig({}, { ownsRemoteAttention: owning })
+    rigged.emit(makeSession('owns-2'), { type: 'approval/asked', seq: 1, data: { toolName: 'bash' } })
+    assert.equal(rigged.messages.length, 1, '归属查询失败绝不能丢通知')
+    assert.equal(rigged.calls[0].localOnly, undefined)
+  }
 })
 
 // ---------------------------------------------------------------- status action-card gate

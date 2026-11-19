@@ -16,6 +16,9 @@ import {
   lifecycleStrings,
   mapGoalEvent,
   mapTodoEvent,
+  toolResultCallId,
+  toolResultKeepsQuestionPending,
+  userQuestionReplyCallId,
 } from './host/lifecycle.mjs'
 // v0.5 状态上报 + 动作闭环
 import { createTurnTracker } from './status/turn-tracker.mjs'
@@ -501,14 +504,6 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
       return typeof id === 'string' && id !== '' ? id : null
     } catch { return null }
   }
-  const toolResultCallIdOf = (event) => {
-    try {
-      const data = event?.data
-      const candidates = [data?.message?.toolCallId, data?.message?.source?.callId, data?.callId]
-      for (const value of candidates) if (typeof value === 'string' && value !== '') return value
-    } catch { /* 载荷不可读时不取消任何待决提醒 */ }
-    return null
-  }
   // P1-2 错误可见性（2026-08-20，Trae1）：keywords.regex 开启时，非法正则条目会静默
   // 降级为字面量子串匹配——语义从「正则命中」变「子串包含」，include 规则可能因此
   // 永不命中（通知静默停止）、exclude 规则可能漏拦。降级本身保留（宁可漏拦不炸启动），
@@ -682,9 +677,17 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
       ...(sessionId !== null ? { sessionId } : {}),
       sessionTitle: sessionTitleOf(session),
       ...(category !== undefined ? { category } : {}),
-      // 插件自有 ask_user 的远端流程由 questions 桥负责；这条只做本机提醒。
-      ...(intent.localOnly === true ? { localOnly: true } : {}),
+      // 远端交互归属：装配层注入的 ownsRemoteAttention 只在 approval/survey 上生效，
+      // 返回 true 表示真实 native/approval 控制路由会承载交互卡片；此时会话通知只补本机。
+      // 未注入、返回 undefined/false 或抛错都保持原样（仅自有 ask_user 自带 localOnly）。
+      ...(intent.localOnly === true || ownsRemoteAttention(intent, session) ? { localOnly: true } : {}),
     }
+  }
+  /** 只对 approval/survey 询问装配层的远端交互归属；任何异常按「不归属」处理。 */
+  function ownsRemoteAttention(intent, session) {
+    if (intent.category !== 'session.approval' && intent.category !== 'session.survey') return false
+    if (typeof wiring.ownsRemoteAttention !== 'function') return false
+    try { return wiring.ownsRemoteAttention(intent, session) === true } catch { return false }
   }
 
   /** 新的 notify 包装用它判定「该会话是否还允许远端投放」；旧 notifier 无此方法。 */
@@ -767,19 +770,29 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
     // 用户活动信号：任何 user/* 事件（发消息/编辑）都证明人在键盘，取消宽限窗内待发打扰
     if (typeof event.type === 'string' && event.type.startsWith('user/')) {
       grace.activity()
+      // timed 提问的 pending 结果之后，用户仍可回答；答案以 user-question-reply 到达时
+      // 取消仍在门口的 survey 提醒，避免「已回答还提示等待」。
+      const replyCallId = userQuestionReplyCallId(event)
+      if (replyCallId !== null) cancelSettle(`survey:${session.id ?? '(anon)'}:${replyCallId}`)
       return
     }
     // 结算信号只用于取消待决提醒，本身不产生通知：
     //  - approval/decided 同 id 到达 = 这次审批从未真正等待（policy=never / 已 abort / 秒决）；
-    //  - tool/result 同 callId 到达 = 提问没有进入等待（秒回错误/无等待调用）。
+    //  - tool/result 同 callId 且不是 rc.3 timed 提问的 `{pending:true}` = 提问已结算。
     if (event.type === 'approval/decided') {
       const id = approvalIdOf(event)
       if (id !== null) cancelSettle(`approval:${id}`)
       return
     }
     if (event.type === 'tool/result') {
-      const callId = toolResultCallIdOf(event)
-      if (callId !== null) cancelSettle(`survey:${session.id ?? '(anon)'}:${callId}`)
+      const callId = toolResultCallId(event)
+      if (callId !== null) {
+        // timed ask_user_question 的超时结果是 `{ pending: true, callId, message }`：
+        // 问题仍可回答，不能取消提醒（下一段 user-question-reply 才是真结算）。
+        if (!toolResultKeepsQuestionPending(event, callId)) {
+          cancelSettle(`survey:${session.id ?? '(anon)'}:${callId}`)
+        }
+      }
       return
     }
     // approval/asked：id 缺失的旧形状保持即时推送；带 id 时先挂可取消短延迟。
