@@ -682,6 +682,8 @@ export function createEventListener(ctx, notifier, resolvedConfig, wiring = {}) 
       ...(sessionId !== null ? { sessionId } : {}),
       sessionTitle: sessionTitleOf(session),
       ...(category !== undefined ? { category } : {}),
+      // 插件自有 ask_user 的远端流程由 questions 桥负责；这条只做本机提醒。
+      ...(intent.localOnly === true ? { localOnly: true } : {}),
     }
   }
 

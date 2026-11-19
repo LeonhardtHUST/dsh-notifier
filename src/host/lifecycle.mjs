@@ -327,6 +327,9 @@ export function mapTodoEvent(state, sessionId, event, strings = ZH) {
   }
 }
 
+// DSH goal 没有独立的「取消」操作：clear（清空 tombstone）是唯一取消语义。
+// block 归入 goal.paused（类别词表没有 goal.blocked）；默认送达策略由会话通知
+// 设置矩阵决定——产品默认 pause/block 不打扰，用户可在设置里把 goal.paused 打开。
 const GOAL_OPERATION_CATEGORY = {
   complete: 'goal.completed',
   clear: 'goal.cancelled',
@@ -397,14 +400,18 @@ export function mapGoalEvent(state, sessionId, event, strings = ZH) {
 }
 
 /**
- * `tool/call` 里唯一被接受的 survey 等待信号：官方 `ask_user_question`。
+ * `tool/call` 里被接受的 survey 等待信号：官方 `ask_user_question` 与插件自有 `ask_user`。
  * 不读、不回显 arguments（只报「有一个问题在等待」），避免把提问正文带进通知。
+ * 插件自有 `ask_user` 的远程提问由 questions 桥的卡片/编号回复负责，这条通知只补本机
+ * 提醒（`localOnly: true`），不让同一问题在远端重复出现；官方工具没有本插件的桥，
+ * 按普通会话通知策略投放。
  * @returns {object | undefined} intent
  */
 export function intentOfSurveyToolCall(event, strings = ZH) {
   if (event?.type !== 'tool/call') return undefined
   const data = event?.data
-  if (!isRecord(data) || data.name !== 'ask_user_question') return undefined
+  if (!isRecord(data)) return undefined
+  if (data.name !== 'ask_user_question' && data.name !== 'ask_user') return undefined
   if (typeof data.callId !== 'string' || data.callId === '') return undefined
   return {
     event: 'tool/call',
@@ -413,6 +420,7 @@ export function intentOfSurveyToolCall(event, strings = ZH) {
     headline: strings.survey.headline,
     level: 'timeSensitive',
     detail: strings.survey.detail,
+    ...(data.name === 'ask_user' ? { localOnly: true } : {}),
   }
 }
 

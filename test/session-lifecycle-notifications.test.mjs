@@ -299,13 +299,14 @@ test('approval/asked：携带 session.approval 类别、sessionId 与注入的 s
   assert.equal(r.messages.length, 1, '同 seq 重放不重复')
 })
 
-test('survey：只认官方 ask_user_question 的 tool/call，文案通用且不回显 arguments', () => {
+test('survey：官方 ask_user_question 与插件自有 ask_user 都提醒；自有工具只发本机', () => {
   const r = rig()
   const session = makeSession('survey-s1')
   const argumentsText = JSON.stringify({ questions: [{ id: 'q1', question: 'SECRET_QUESTION_TEXT' }] })
   r.emit(session, { type: 'tool/call', seq: 1, data: { turn: 1, step: 1, callId: 'call-1', name: 'ask_user_question', arguments: argumentsText } })
   assert.equal(r.messages.length, 1)
   assert.equal(r.calls[0].category, 'session.survey')
+  assert.equal(r.calls[0].localOnly, undefined, '官方提问按普通策略投放')
   assert.match(r.messages[0].title, /需要你回答/)
   assert.doesNotMatch(r.messages[0].content, /SECRET_QUESTION_TEXT/, '不回显原始问题参数')
   assert.equal(r.messages[0].level, 'timeSensitive')
@@ -314,11 +315,16 @@ test('survey：只认官方 ask_user_question 的 tool/call，文案通用且不
   r.emit(session, { type: 'tool/call', seq: 2, data: { callId: 'call-1', name: 'ask_user_question', arguments: argumentsText } })
   assert.equal(r.messages.length, 1)
 
-  // 插件自有 ask_user / 其他工具 / tool/result 都不产生 survey 通知。
+  // 插件自有 ask_user：remote 由 questions 桥的卡片/编号回复负责，这条只补本机提醒。
   r.emit(session, { type: 'tool/call', seq: 3, data: { callId: 'call-2', name: 'ask_user', arguments: '{}' } })
+  assert.equal(r.messages.length, 2)
+  assert.equal(r.calls[1].category, 'session.survey')
+  assert.equal(r.calls[1].localOnly, true)
+
+  // 其他工具 / tool/result 都不产生 survey 通知。
   r.emit(session, { type: 'tool/call', seq: 4, data: { callId: 'call-3', name: 'bash', arguments: '{}' } })
   r.emit(session, { type: 'tool/result', seq: 5, data: { callId: 'call-1', message: {} } })
-  assert.equal(r.messages.length, 1)
+  assert.equal(r.messages.length, 2)
 })
 
 test('survey：缺 callId 的 tool/call 不推送', () => {
@@ -379,6 +385,16 @@ test('survey 假阳性防护：tool/call 后立即 tool/result 不推送；没�
   await tick(40)
   assert.equal(r.messages.length, 1, '真实等待在窗口后推送')
   assert.equal(r.calls[0].category, 'session.survey')
+
+  // 自有 ask_user 同样适用：即时 tool/result 取消，真实等待只发本机。
+  r.emit(session, { type: 'tool/call', seq: 4, data: { callId: 'c3', name: 'ask_user', arguments: '{}' } })
+  r.emit(session, result(5, 'c3'))
+  await tick(40)
+  assert.equal(r.messages.length, 1, '自有 ask_user 秒回不 notify')
+  r.emit(session, { type: 'tool/call', seq: 6, data: { callId: 'c4', name: 'ask_user', arguments: '{}' } })
+  await tick(40)
+  assert.equal(r.messages.length, 2)
+  assert.equal(r.calls[1].localOnly, true, '自有 ask_user 的远端流程归 questions 桥')
 })
 
 test('dispose 会 flush 未到期的待决提醒（进程退出前不丢真实等待）', async () => {
