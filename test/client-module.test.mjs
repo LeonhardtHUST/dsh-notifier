@@ -49,8 +49,8 @@ function collect(node, predicate) {
 function loadModule({ rpcCall } = {}) {
   let source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
   source = source.replace(
-    "return {\n      inject: ['slots', 'connection', 'locale', 'layout'],",
-    "return {\n      __test: { createController, launchAdvancedConsole, QuestionCard, TaskRow, ChannelRow, ActivityRow, LocalView, LocalRow, HomeView, ChannelsView, MainPanel, isLocalRow, zh, en },\n      inject: ['slots', 'connection', 'locale', 'layout'],",
+    "return {\n      inject: ['slots', 'connection', 'locale', 'layout', 'uiWorkspace'],",
+    "return {\n      __test: { createController, launchAdvancedConsole, QuestionCard, TaskRow, ChannelRow, ActivityRow, LocalView, LocalRow, HomeView, ChannelsView, MainPanel, isLocalRow, zh, en },\n      inject: ['slots', 'connection', 'locale', 'layout', 'uiWorkspace'],",
   )
   assert.match(source, /__test:/)
   let registration
@@ -80,9 +80,9 @@ function loadModule({ rpcCall } = {}) {
   return { mod, ctx }
 }
 
-test('client module registers the four intended DSH slots', () => {
+test('client module registers Native panels and the global notification overlay', () => {
   const { mod } = loadModule()
-  assert.deepEqual(Array.from(mod.inject), ['slots', 'connection', 'locale', 'layout'])
+  assert.deepEqual(Array.from(mod.inject), ['slots', 'connection', 'locale', 'layout', 'uiWorkspace'])
   const registrations = []
   const effects = []
   const ctx = {
@@ -93,7 +93,7 @@ test('client module registers the four intended DSH slots', () => {
     slots: { inject(_name, fn) { return fn() }, register(options, component) { registrations.push({ options, component }); return () => {} } },
   }
   mod.apply(ctx)
-  assert.deepEqual(registrations.map(x => x.options.name).sort(), ['main', 'plugins.bundle.activation', 'plugins.bundle.config', 'sidebar.panellist'])
+  assert.deepEqual(registrations.map(x => x.options.name).sort(), ['main', 'plugins.bundle.activation', 'plugins.bundle.config', 'shell.overlay', 'sidebar.panellist'])
   assert.equal(registrations.find(x => x.options.name === 'main').options.key, 'dsh-notifier')
   const panellist = registrations.find(x => x.options.name === 'sidebar.panellist')
   assert.equal(panellist.options.id, 'dsh-notifier')

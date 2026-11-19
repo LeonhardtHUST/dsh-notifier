@@ -1,0 +1,18 @@
+# Workstream: session overlay
+
+- Agent identity: `overlay | gpt-6.1-sol | Windows shared worktree`
+- Agent: `overlay`
+- Branch: `codex/session-notifications`
+- Status: `done`
+- Start/end: `2026-11-19 -> 2026-11-19`
+- Scope: Client notification overlay and Native notification settings only.
+- Plan: Inspect existing client, installed host contracts and unitary-ui interaction examples; implement overlay placement, animation, stack controls and session navigation; add per-session mute actions and Native policy/mute settings against lead-provided RPC contracts; challenge stale events, disposal, keyboard access and titlebar safety; run focused and full validation.
+- Owned files: `client.js`, `src/client/*`, `test/client-notification-overlay.test.mjs`, `.agents/workstreams/session-overlay.md`.
+- Do not touch: Other source, documentation, HANDOFF, release metadata or another workstream. Do not push.
+- Validation: `node --test test/client-notification-overlay.test.mjs test/client-module.test.mjs`; `npm test`; project release guards and syntax checks.
+- Adversarial review: Removed old activity-derived panel toasts; baseline, epoch changes and visibility restoration suppress historical replay. Dedicated renderer focus filtering does not trust another client's presence. Saves/mutes force a new baseline to avoid racing pre-save reads. Native details/summary menus separate navigation from mute; timers and focus/visibility/hash listeners dispose. Installed layout README confirms `--dsh-frame-overlay-top` reserves Windows/macOS caption chrome; no DOM probing or borrowed source code was used. Final focused suites pass 33/33.
+- Handoff: Implemented global shell.overlay, six positions, six entrance animations, up/down stacks (four-card cap, or newest-only), reduced-motion behavior, session navigation via verified `ctx.uiWorkspace.openSession(sessionId)`, duration presets and mute list, and per-category overlay/system/remote matrix. Added strict plugin-owned `#dsh-notifier-session=` activation after authenticated RPC and own-fragment cleanup. Lead authorized the additional edit to `test/client-module.test.mjs` for five slots/service injection. Client remains one no-build loader artifact.
+- Validation results: Full shared-tree `npm test` at this milestone: 2206 total, 2201 pass, 4 fail, 1 skip. Failures are outside owned scope: `public.test.mjs:554` new desktop destination; `wiring.route.test.mjs:273` added cleanup callbacks; `:607/:639` additional routing metadata. Lead notified. Release guard, channel matrix, `src/index.mjs` and client syntax, and owned whitespace check pass. Final targeted suite 33/33 after all changes.
+- Neat-freak: Read local checklist; enumerated root/docs and measured knowledge files. `AGENTS.md` is 7KB; compact memory files remain bounded. Knowledge-base release baseline still says 0.14.1 while package/project-state say 0.14.2; lead owns that reconciliation and user-facing docs/CHANGELOG. No memory-service tools are exposed to this worker. Durable evidence is recorded here; HANDOFF and other docs were not modified.
+- Device gaps: No authenticated installed Desktop/browser end-to-end run, dark/light responsive sweep, native titlebar click-through test or OS notification activation run. Startup workspace restoration ordering has no separately verified host-ready signal beyond successful authenticated notifications RPC. Test this on the real supported host before claiming activation parity. No profile changes, replacement server or push performed.
+- Commit: Owned client implementation/test/workstream commit; obtain final hash from git log after staging. Shared tree contains parallel lead changes; only owned paths are staged.

@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
       desktopTestAccepted: '已交给系统通知中心。没看到的话，检查系统的勿扰或专注模式。',
       managedByYaml: '由配置文件（cordis.patch.yml）启用，这里不能关闭。',
       suppressTitle: '远程通知抑制',
-      suppressIntro: '当你在这台电脑前时，只显示本机通知并跳过远程渠道。仅在桌面通知已开启时生效。',
+      suppressIntro: '仅用于远程投递矩阵中的“跟随在场状态”。系统通知可用且你在这台电脑前时跳过远程渠道。',
       suppressFocus: 'DSH 窗口在前台时',
       suppressFocusHint: '窗口可见并处于焦点。',
       suppressUnlock: '计算机解锁时',
@@ -145,7 +145,7 @@ window.__ModuleLoader__.load({
       desktopTestAccepted: 'Handed to the system notification center. If nothing appears, check Do Not Disturb / Focus settings.',
       managedByYaml: 'Enabled by configuration (cordis.patch.yml); it cannot be turned off here.',
       suppressTitle: 'Remote notification suppression',
-      suppressIntro: 'While you are at this computer, show local notifications and skip remote channels. Only applies when desktop notifications are on.',
+      suppressIntro: 'Only applies to Remote delivery set to Follow presence. Skip remote channels while you are at this computer and system notifications are available.',
       suppressFocus: 'While the DSH window is focused',
       suppressFocusHint: 'The window is visible and focused.',
       suppressUnlock: 'While the computer is unlocked',
@@ -237,6 +237,65 @@ window.__ModuleLoader__.load({
       return row?.scope === 'local' || row?.type === 'desktop' || row?.type === 'bell'
     }
 
+    const OVERLAY_POSITIONS = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right']
+    const OVERLAY_ANIMATIONS = ['down', 'up', 'left', 'right', 'fade', 'none']
+    const NOTICE_TEXT = {
+      en: { notifications: 'Notification delivery', overlay: 'In-app overlay', system: 'System', remote: 'Remote', always: 'Always', focused: 'When focused', away: 'When away', never: 'Never', default: 'Follow presence', position: 'Position', animation: 'Animation', stack: 'Stack notifications', stackDirection: 'Stack direction', down: 'Down', up: 'Up', mute: 'Mute session', unmute: 'Unmute', muted: 'Muted sessions', muteMinutes: 'Mute durations (minutes, comma separated; always)', close: 'Dismiss notification', open: 'Open session', noneMuted: 'No muted sessions', unavailable: 'Notification settings unavailable', forever: 'Always', until: 'Until', saved: 'Saved', categories: 'Delivery by category' },
+      zh: { notifications: '通知投递', overlay: '界面浮层', system: '系统', remote: '远程', always: '始终', focused: '有焦点时', away: '离开时', never: '不投递', default: '跟随在场状态', position: '位置', animation: '动画', stack: '堆叠通知', stackDirection: '堆叠方向', down: '向下', up: '向上', mute: '静音此会话', unmute: '取消静音', muted: '已静音会话', muteMinutes: '静音档位（分钟，逗号分隔；always 表示永久）', close: '关闭通知', open: '打开会话', noneMuted: '暂无已静音会话', unavailable: '通知设置暂不可用', forever: '永久', until: '截止', saved: '已保存', categories: '按分类投递' },
+    }
+    const CATEGORY_NAMES = {
+      'session.completed': ['Session completed', '会话完成'], 'session.error': ['Session error', '会话错误'], 'session.started': ['Session started', '会话开始'], 'session.status': ['Session status', '会话状态'], 'session.approval': ['Approval required', '等待审批'], 'session.survey': ['Question required', '等待回答'], 'session.message': ['Manual notification', '手动通知'],
+      'todo.completed': ['Todo completed', '待办完成'], 'todo.cancelled': ['Todo cancelled', '待办取消'], 'todo.changed': ['Todo changed', '待办变更'], 'todo.paused': ['Todo paused', '待办暂停'], 'goal.completed': ['Goal completed', '目标完成'], 'goal.cancelled': ['Goal cancelled', '目标取消'], 'goal.changed': ['Goal changed', '目标变更'], 'goal.paused': ['Goal paused', '目标暂停'],
+      'top-left': ['Top left', '左上'], 'top-center': ['Top center', '上方居中'], 'top-right': ['Top right', '右上'], 'bottom-left': ['Bottom left', '左下'], 'bottom-center': ['Bottom center', '下方居中'], 'bottom-right': ['Bottom right', '右下'], left: ['From right', '从右侧进入'], right: ['From left', '从左侧进入'], fade: ['Fade', '淡入'], none: ['None', '无'],
+    }
+    function noticeText(ctx, key) {
+      const language = String(ctx?.locale?.current ?? '').toLowerCase().startsWith('zh') ? 'zh' : 'en'
+      if (CATEGORY_NAMES[key]) return resolveText(ctx, { en: CATEGORY_NAMES[key][0], zh: CATEGORY_NAMES[key][1] })
+      return resolveText(ctx, { en: NOTICE_TEXT.en[key] ?? key, zh: NOTICE_TEXT.zh[key] ?? key }) || NOTICE_TEXT[language][key] || key
+    }
+    function rendererFocused(page = document) {
+      try { return page.visibilityState !== 'hidden' && typeof page.hasFocus === 'function' && page.hasFocus() === true } catch { return false }
+    }
+    function allowsOverlay(mode, page = document) {
+      if (page.visibilityState === 'hidden') return false
+      return mode === 'always' || (mode === 'focused' && rendererFocused(page)) || (mode === 'away' && !rendererFocused(page))
+    }
+    function overlayOptions(value) {
+      return {
+        position: OVERLAY_POSITIONS.includes(value?.position) ? value.position : 'top-right',
+        animation: OVERLAY_ANIMATIONS.includes(value?.animation) ? value.animation : 'down',
+        stack: value?.stack !== false,
+        stackDirection: value?.stackDirection === 'up' ? 'up' : 'down',
+      }
+    }
+
+    function installSessionActivation(controller, view = window) {
+      let disposed = false
+      let generation = 0
+      const activate = async () => {
+        const hash = view.location?.hash ?? ''
+        if (!hash.startsWith('#dsh-notifier-session=')) return
+        const current = ++generation
+        let sessionId
+        try { sessionId = decodeURIComponent(hash.slice('#dsh-notifier-session='.length)) } catch { return }
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(sessionId)) return
+        try {
+          await controller.loadNotifications()
+          if (disposed || current !== generation || view.location.hash !== hash) return
+          if (controller.openNotice({ sessionId }) === false) return
+          view.history?.replaceState?.(view.history.state, '', `${view.location.pathname}${view.location.search}`)
+        } catch { /* Authentication or runtime unavailable: retain the link for a later retry. */ }
+      }
+      void activate()
+      let wasReady = Boolean(controller.getSnapshot?.().notifications)
+      const unsubscribe = controller.subscribe?.(() => {
+        const ready = Boolean(controller.getSnapshot?.().notifications)
+        if (ready && !wasReady) { wasReady = true; void activate() }
+      })
+      view.addEventListener?.('hashchange', activate)
+      return () => { disposed = true; generation += 1; unsubscribe?.(); view.removeEventListener?.('hashchange', activate) }
+    }
+
     function createRpcClient(ctx) {
       async function call(endpoint, payload = {}, signal) {
         const result = await ctx.connection.rpc.call(RPC_CHANNEL, endpoint, payload, signal)
@@ -271,6 +330,8 @@ window.__ModuleLoader__.load({
         home: null,
         channels: null,
         local: null,
+        notifications: null,
+        notices: [],
         tasks: null,
         activity: null,
         channel: null,
@@ -288,6 +349,50 @@ window.__ModuleLoader__.load({
       // v0.12.1（P1-13）：同一资源只接受最新一代请求的响应，避免迟到数据覆盖当前视图。
       const generations = { home: 0, channels: 0, local: 0, channel: 0, tasks: 0, activity: 0 }
       let paused = false
+      let noticeCursor
+      let noticeEpoch
+      let notificationRequest = null
+      let noticeBaseline = true
+      let noticeGeneration = 0
+
+      async function loadNotifications({ baseline = false } = {}) {
+        if (baseline) { noticeBaseline = true; noticeGeneration += 1 }
+        if (notificationRequest) {
+          if (!baseline) return notificationRequest
+          await notificationRequest.catch(() => {})
+        }
+        const generation = noticeGeneration
+        const reset = noticeBaseline || noticeCursor === undefined
+        const request = rpc.call('notifications.get', reset ? {} : { after: noticeCursor, epoch: noticeEpoch }).then(value => {
+          if (disposed || generation !== noticeGeneration) return value
+          const changedEpoch = noticeEpoch !== undefined && value.epoch !== noticeEpoch
+          noticeCursor = value.cursor
+          noticeEpoch = value.epoch
+          noticeBaseline = false
+          const mutedIds = new Set((value.muted ?? []).map(row => row.sessionId))
+          const incoming = reset || changedEpoch ? [] : (value.items ?? []).filter(row => !mutedIds.has(row.sessionId) && allowsOverlay(row.mode))
+          const options = overlayOptions(value.settings?.overlay)
+          const previous = changedEpoch || reset ? [] : snapshot.notices.filter(row => !mutedIds.has(row.sessionId))
+          const notices = [...incoming.slice().reverse(), ...previous].filter((row, index, rows) => rows.findIndex(item => item.id === row.id) === index).slice(0, options.stack ? 4 : 1)
+          emit({ notifications: value, notices })
+          return value
+        }).finally(() => { if (notificationRequest === request) notificationRequest = null })
+        notificationRequest = request
+        return request
+      }
+      async function saveNotifications(patch) {
+        setBusy('notifications', true)
+        try { await rpc.call('notifications.save', patch); return await loadNotifications({ baseline: true }) }
+        finally { setBusy('notifications', false) }
+      }
+      async function muteSession(sessionId, minutes) {
+        setBusy('notifications', true)
+        try {
+          await rpc.call('notifications.mute', { sessionId, minutes })
+          if (minutes !== null) emit({ notices: snapshot.notices.filter(row => row.sessionId !== sessionId) })
+          return await loadNotifications({ baseline: true })
+        } finally { setBusy('notifications', false) }
+      }
 
       const emit = (patch) => {
         snapshot = Object.freeze({ ...snapshot, ...patch })
@@ -395,6 +500,7 @@ window.__ModuleLoader__.load({
       async function refreshCurrent() {
         if (disposed) return false
         try {
+          await loadNotifications().catch(() => {})
           const kind = snapshot.view.kind
           if (kind === 'channels') await loadChannels()
           else if (kind === 'local') await loadLocal()
@@ -550,6 +656,7 @@ window.__ModuleLoader__.load({
           waitAbort?.abort()
           waitAbort = null
         } else {
+          void loadNotifications({ baseline: true }).catch(() => {})
           resumeWait()
           void refreshCurrent()
         }
@@ -571,6 +678,16 @@ window.__ModuleLoader__.load({
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
         loadHome, loadChannels, loadChannel, loadTasks, loadActivity,
         loadLocal, saveLocal, saveSuppressionPolicy, reportPresence,
+        loadNotifications, saveNotifications, muteSession,
+        dismissNotice(id) { emit({ notices: snapshot.notices.filter(row => row.id !== id) }) },
+        openNotice(row) {
+          try {
+            if (!row?.sessionId || typeof ctx.uiWorkspace?.openSession !== 'function') throw new Error('Session navigation unavailable')
+            ctx.uiWorkspace.openSession(row.sessionId)
+            emit({ notices: snapshot.notices.filter(item => item.id !== row.id) })
+            return true
+          } catch (error) { setError(error); return false }
+        },
         refreshCurrent, saveChannel, testChannel, settleQuestion, createStandaloneLaunch,
         navigate, startWait, setActive, dispose,
         // v0.12.1（P1-09）：视图必须能把业务失败写入统一错误出口。
@@ -1079,6 +1196,7 @@ window.__ModuleLoader__.load({
                 ? t('desktopTestAccepted')
                 : `${t('testFailed')}${testResult.detail ? ` · ${resolveText(ctx, testResult.detail)}` : ''}`)
           : null,
+        h(NotificationSettings, { ctx, controller, state }),
         suppressionSection,
         h(Section, { title: t('otherLocal') },
           h('div', { className: 'dn-switchRow' },
@@ -1234,46 +1352,7 @@ window.__ModuleLoader__.load({
     function MainPanel({ controller, ctx }) {
       const state = useController(controller)
       const t = useT(ctx)
-      const [toasts, setToasts] = useState([])
-      const seen = useRef(new Set())
-      const toastTimers = useRef(new Map())
-      const toastBaseline = useRef(false)
-      const focused = () => {
-        try {
-          const page = typeof document === 'object' ? document : null
-          if (page?.visibilityState === 'hidden') return false
-          return typeof page?.hasFocus !== 'function' || page.hasFocus() === true
-        } catch { return false }
-      }
       useEffect(() => { controller.startWait() }, [])
-      // 轻量焦点浮层：home.activity 是同一 revision 下的安全、脱敏活动投影。
-      // 页面有焦点时只在右上角提示，不调用系统 Notification；失焦则不在此重复打扰。
-      useEffect(() => {
-        const rows = Array.isArray(state.home?.activity) ? state.home.activity : []
-        if (rows.length === 0) return
-        if (!toastBaseline.current) {
-          rows.forEach(row => { if (row?.id !== undefined) seen.current.add(String(row.id)) })
-          toastBaseline.current = true
-          return
-        }
-        const fresh = rows.filter(row => row?.id !== undefined && !seen.current.has(String(row.id)))
-        rows.forEach(row => { if (row?.id !== undefined) seen.current.add(String(row.id)) })
-        if (seen.current.size > 200) seen.current = new Set(rows.map(row => String(row.id)))
-        if (fresh.length === 0 || !focused()) return
-        const added = fresh.slice(0, 3).map(row => ({ ...row, toastId: `${row.id}:${Date.now()}:${Math.random()}` }))
-        setToasts(current => [...added, ...current].slice(0, 3))
-        added.forEach(row => {
-          const timer = setTimeout(() => {
-            toastTimers.current.delete(row.toastId)
-            setToasts(current => current.filter(item => item.toastId !== row.toastId))
-          }, 6000)
-          toastTimers.current.set(row.toastId, timer)
-        })
-      }, [state.home?.activity])
-      useEffect(() => () => {
-        for (const timer of toastTimers.current.values()) clearTimeout(timer)
-        toastTimers.current.clear()
-      }, [])
       let view
       if (state.view.kind === 'channels') view = h(ChannelsView, { ctx, controller, state, t })
       else if (state.view.kind === 'channel') view = h(ChannelDetailView, { key: state.view.type, ctx, controller, state, t })
@@ -1281,13 +1360,84 @@ window.__ModuleLoader__.load({
       else if (state.view.kind === 'tasks') view = h(TasksView, { ctx, controller, state, t })
       else if (state.view.kind === 'activity') view = h(ActivityView, { ctx, controller, state, t })
       else view = h(HomeView, { ctx, controller, state, t })
-      const toastView = toasts.length > 0 ? h('div', { className: 'dn-toastStack', 'aria-live': 'polite' },
-        ...toasts.map(row => h('div', { key: row.toastId, className: `dn-toast dn-toast--${row.level || 'info'}`, role: 'status' },
-          h('div', { className: 'dn-toastBody' }, h('strong', null, resolveText(ctx, row.title)), row.detail ? h('span', null, resolveText(ctx, row.detail)) : null),
-          h('button', { type: 'button', className: 'dn-toastClose', 'aria-label': t('toastClose'), onClick: () => setToasts(current => current.filter(item => item.toastId !== row.toastId)) }, '×')))) : null
       return h('div', { className: 'dn-scroll', key: `${state.view.kind}:${state.view.type ?? ''}` },
-        toastView,
         view)
+    }
+
+    function NotificationOverlay({ ctx, controller }) {
+      const state = useController(controller)
+      useT(ctx)
+      useEffect(() => {
+        void controller.loadNotifications({ baseline: true }).catch(() => {})
+        controller.startWait()
+      }, [controller])
+      const [, updateFocus] = useState(0)
+      useEffect(() => {
+        const update = () => updateFocus(value => value + 1)
+        window.addEventListener?.('focus', update)
+        window.addEventListener?.('blur', update)
+        document.addEventListener?.('visibilitychange', update)
+        return () => { window.removeEventListener?.('focus', update); window.removeEventListener?.('blur', update); document.removeEventListener?.('visibilitychange', update) }
+      }, [])
+      const options = overlayOptions(state.notifications?.settings?.overlay)
+      const rows = (state.notices ?? []).filter(row => allowsOverlay(row.mode))
+      if (!rows.length) return null
+      return h('section', { className: 'dn-noticeViewport', 'data-position': options.position, 'data-direction': options.stackDirection, 'aria-label': noticeText(ctx, 'notifications'), 'aria-live': 'polite' },
+        ...rows.map(row => h(NotificationCard, { key: `${state.notifications?.epoch}:${row.id}`, ctx, controller, row, options, minutes: state.notifications?.settings?.muteMinutes ?? [5, 10, 15, 30, 'always'], busy: state.busy.notifications === true })))
+    }
+    function NotificationCard({ ctx, controller, row, options, minutes, busy }) {
+      const [interacting, setInteracting] = useState(false)
+      useEffect(() => {
+        if (interacting) return
+        const timer = setTimeout(() => controller.dismissNotice(row.id), 8000)
+        return () => clearTimeout(timer)
+      }, [row.id, interacting, controller])
+      return h('article', {
+        className: 'dn-notice', 'data-animation': options.animation,
+        onMouseEnter: () => setInteracting(true), onMouseLeave: () => setInteracting(false),
+        onFocus: () => setInteracting(true),
+        onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) setInteracting(false) },
+      },
+      h('button', { type: 'button', className: 'dn-noticeOpen', disabled: !row.sessionId, 'aria-label': `${noticeText(ctx, 'open')}: ${row.sessionTitle || row.sessionId || ''}`, onClick: () => controller.openNotice(row) },
+        h('small', null, row.sessionTitle || row.sessionId || ''), h('strong', null, resolveText(ctx, row.title)), h('span', null, resolveText(ctx, row.body))),
+      h('div', { className: 'dn-noticeActions' },
+        row.sessionId ? h('details', { onToggle: event => setInteracting(event.currentTarget.open) },
+          h('summary', { 'aria-label': noticeText(ctx, 'mute') }, noticeText(ctx, 'mute')),
+          h('div', { className: 'dn-muteChoices' }, ...minutes.map(value => h('button', { key: value, type: 'button', disabled: busy, onClick: () => void controller.muteSession(row.sessionId, value).catch(error => controller.reportError(error)) }, value === 'always' ? noticeText(ctx, 'forever') : `${value} min`)))) : null,
+        h('button', { type: 'button', className: 'dn-toastClose', 'aria-label': noticeText(ctx, 'close'), onClick: () => controller.dismissNotice(row.id) }, '×')))
+    }
+
+    function NotificationSettings({ ctx, controller, state }) {
+      useEffect(() => { void controller.loadNotifications().catch(error => controller.reportError(error)) }, [controller])
+      const data = state.notifications
+      const [durationDraft, setDurationDraft] = useState(null)
+      const [durationError, setDurationError] = useState(null)
+      const label = key => noticeText(ctx, key)
+      if (!data?.settings) return h('p', { className: 'dn-note' }, label('unavailable'))
+      const settings = data.settings
+      const options = overlayOptions(settings.overlay)
+      const busy = state.busy.notifications === true
+      const save = patch => void controller.saveNotifications(patch).catch(error => controller.reportError(error))
+      const select = (key, value, values, onChange) => h('label', { className: 'dn-field', key }, h('span', null, label(key)), h('select', { value, disabled: busy, onChange: event => onChange(event.target.value) }, ...values.map(option => h('option', { key: option, value: option }, label(option)))))
+      return h('div', null,
+        h(Section, { title: label('overlay') },
+          select('position', options.position, OVERLAY_POSITIONS, value => save({ overlay: { position: value } })),
+          select('animation', options.animation, OVERLAY_ANIMATIONS, value => save({ overlay: { animation: value } })),
+          h('div', { className: 'dn-switchRow' }, label('stack'), switchButton({ checked: options.stack, disabled: busy, label: label('stack'), onToggle: () => save({ overlay: { stack: !options.stack } }) })),
+          select('stackDirection', options.stackDirection, ['down', 'up'], value => save({ overlay: { stackDirection: value } }))),
+        h(Section, { title: label('categories') }, h('div', { className: 'dn-matrixScroll' }, h('table', { className: 'dn-deliveryMatrix' },
+          h('thead', null, h('tr', null, h('th', null, ''), ...['overlay', 'system', 'remote'].map(destination => h('th', { key: destination, scope: 'col' }, label(destination))))),
+          h('tbody', null, ...Object.entries(settings.rules ?? {}).map(([category, rule]) => h('tr', { key: category }, h('th', { scope: 'row' }, label(category)), ...['overlay', 'system', 'remote'].map(destination => h('td', { key: destination }, h('select', { 'aria-label': `${label(category)}: ${label(destination)}`, value: rule[destination], disabled: busy, onChange: event => save({ rules: { [category]: { [destination]: event.target.value } } }) }, ...(destination === 'remote' ? ['default', 'always', 'focused', 'away', 'never'] : ['always', 'focused', 'away', 'never']).map(mode => h('option', { key: mode, value: mode }, label(mode)))))))))))),
+        h(Section, { title: label('muted') },
+          h('label', { className: 'dn-field' }, label('muteMinutes'), h('input', { value: durationDraft ?? settings.muteMinutes.join(', '), disabled: busy, onChange: event => setDurationDraft(event.target.value) })),
+          h(Button, { disabled: busy || durationDraft === null, onClick: () => {
+            const values = durationDraft.split(',').map(value => value.trim()).map(value => value === 'always' ? value : Number(value))
+            if (!values.length || values.length > 8 || new Set(values).size !== values.length || values.some(value => value !== 'always' && (!Number.isInteger(value) || value < 1 || value > 10080))) { setDurationError(label('muteMinutes')); return }
+            setDurationError(null)
+            void controller.saveNotifications({ muteMinutes: values }).then(() => setDurationDraft(null)).catch(error => controller.reportError(error))
+          } }, resolveText(ctx, { en: 'Save durations', zh: '保存档位' })),
+          durationError ? h('p', { className: 'dn-error', role: 'alert' }, durationError) : null,
+          ...(data.muted?.length ? data.muted.map(row => h('div', { key: row.sessionId, className: 'dn-row' }, h('span', { className: 'dn-rowMain' }, row.sessionTitle || row.sessionId, h('small', null, row.until === null ? label('forever') : `${label('until')} ${new Date(row.until).toLocaleString()}`)), h(Button, { disabled: busy, onClick: () => void controller.muteSession(row.sessionId, null).catch(error => controller.reportError(error)) }, label('unmute')))) : [h('p', { className: 'dn-note', key: 'empty' }, label('noneMuted'))])))
     }
 
     function SidebarIcon({ size = 18, active = false }) {
@@ -1332,9 +1482,12 @@ window.__ModuleLoader__.load({
     }
 
     const CSS = `
+      .dn-noticeViewport{position:absolute;z-index:30;top:var(--dsh-frame-overlay-top,20px);right:20px;width:min(380px,calc(100% - 40px));max-height:calc(100% - var(--dsh-frame-overlay-top,20px) - 20px);overflow:auto;display:flex;flex-direction:column;gap:8px;pointer-events:none;color:var(--dsw-alias-label-primary);-webkit-app-region:no-drag}
+      .dn-noticeViewport[data-position^="bottom"]{top:auto;bottom:20px}.dn-noticeViewport[data-position$="left"]{right:auto;left:20px}.dn-noticeViewport[data-position$="center"]{right:auto;left:50%;transform:translateX(-50%)}.dn-noticeViewport[data-direction="up"]{flex-direction:column-reverse}
+      .dn-notice{pointer-events:auto;flex-shrink:0;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:0 8px 24px rgba(0,0,0,.16);padding:12px;animation:dnNoticeIn .18s ease-out;--dn-enter-x:0px;--dn-enter-y:-10px;-webkit-app-region:no-drag}.dn-notice[data-animation="up"]{--dn-enter-y:10px}.dn-notice[data-animation="left"]{--dn-enter-x:12px;--dn-enter-y:0px}.dn-notice[data-animation="right"]{--dn-enter-x:-12px;--dn-enter-y:0px}.dn-notice[data-animation="fade"]{--dn-enter-y:0px}.dn-notice[data-animation="none"]{animation:none}.dn-noticeOpen{width:100%;border:0;padding:0;background:transparent;color:inherit;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:4px;font:inherit}.dn-noticeOpen strong{font-size:14px;font-weight:500}.dn-noticeOpen small,.dn-noticeOpen span{color:var(--dsw-alias-label-secondary);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.dn-noticeActions{display:flex;justify-content:space-between;align-items:start;margin-top:8px;font-size:12px}.dn-noticeActions summary{cursor:pointer}.dn-muteChoices{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}.dn-muteChoices button{background:var(--dsw-alias-bg-base);color:inherit;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);padding:5px;cursor:pointer}.dn-matrixScroll{overflow-x:auto}.dn-deliveryMatrix{width:100%;border-collapse:collapse;font-size:12px}.dn-deliveryMatrix th,.dn-deliveryMatrix td{text-align:left;padding:6px}.dn-field select,.dn-deliveryMatrix select{max-width:100%;background:var(--dsw-alias-bg-layer-1);color:inherit;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);padding:5px}.dn-notice button:focus-visible,.dn-notice summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}@keyframes dnNoticeIn{from{opacity:0;transform:translate(var(--dn-enter-x),var(--dn-enter-y))}to{opacity:1;transform:translate(0,0)}}@media(prefers-reduced-motion:reduce){.dn-notice{animation:none}}
       .dn-page{box-sizing:border-box;max-width:960px;margin:0 auto;padding:28px clamp(24px,4vw,48px) 48px;color:var(--dsw-alias-label-primary);font-family:inherit}
       .dn-scroll{box-sizing:border-box;flex:1 1 auto;width:100%;height:100%;max-height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
-      .dn-shell{position:relative;box-sizing:border-box;width:100%;height:100%;min-height:0;display:flex;flex-direction:column}.dn-toastStack{position:absolute;z-index:20;top:14px;right:18px;width:min(360px,calc(100% - 36px));display:flex;flex-direction:column;gap:8px;pointer-events:none}.dn-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:0 8px 24px rgba(0,0,0,.16);animation:dnToastIn .18s ease-out}.dn-toastBody{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:19px}.dn-toastBody strong{font-weight:500}.dn-toastBody span{color:var(--dsw-alias-label-secondary);font-size:12px}.dn-toastClose{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:18px;line-height:18px;padding:0 2px;cursor:pointer}@keyframes dnToastIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}.dn-pageHead{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 28px}
+      .dn-shell{position:relative;box-sizing:border-box;width:100%;height:100%;min-height:0;display:flex;flex-direction:column}.dn-toastClose{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:18px;line-height:18px;padding:0 2px;cursor:pointer}.dn-pageHead{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 28px}
       .dn-pageTitle{margin:0;font-size:20px;line-height:28px;font-weight:500}
       .dn-pageIntro{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
       .dn-pageActions,.dn-formActions,.dn-questionActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -1389,7 +1542,7 @@ window.__ModuleLoader__.load({
     `
 
     return {
-      inject: ['slots', 'connection', 'locale', 'layout'],
+      inject: ['slots', 'connection', 'locale', 'layout', 'uiWorkspace'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-notifier: native locale')
         const style = document.createElement('style')
@@ -1399,6 +1552,7 @@ window.__ModuleLoader__.load({
         ctx.effect(() => () => { style.remove() }, 'dsh-notifier: native styles')
 
         const controller = createController(ctx)
+        ctx.effect(() => installSessionActivation(controller), 'dsh-notifier: session activation')
         // v0.12.1（P2-11）：页面不可见时停止 surface.wait 与 fallback 刷新，恢复时追一次。
         ctx.effect(() => {
           const page = typeof document === 'object' ? document : null
@@ -1467,6 +1621,8 @@ window.__ModuleLoader__.load({
           message: resolveText(ctx, { zh: zh.renderFailed, en: en.renderFailed }),
           retry: resolveText(ctx, { zh: zh.retry, en: en.retry }),
         }, child)
+        const Overlay = () => boundary(h(NotificationOverlay, { controller, ctx }))
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-notifier.notifications' }, Overlay))
         const Main = () => boundary(h(MainPanel, { controller, ctx }))
         const Config = props => boundary(h(PluginConfig, { ...props, controller, ctx }))
         const ActivationView = props => boundary(h(Activation, { ...props, ctx }))
