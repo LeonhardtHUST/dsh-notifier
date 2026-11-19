@@ -1,0 +1,14 @@
+# Workstream: session notification docs
+
+- Agent identity: `docs-sync | deepseek-flash worker | Windows shared worktree`
+- Agent: `docs-sync`
+- Branch: `codex/session-notifications`
+- Status: `done`
+- Start/end: `2026-11-19 -> 2026-11-19`
+- Scope: Synchronize user-facing and engineering docs for the unreleased session notification policy without changing source, HANDOFF, engineering memory or release metadata.
+- Plan: Read the current worktree implementation and tests as authority; inventory README/guide/architecture/OPERATIONS/KNOWLEDGE_BASE/CHANGELOG; fix stale 0.14.2 release facts and duplicated Unreleased entries; add an explicitly unreleased policy summary (defaults, todo/goal inference, mute, overlay, OS action limits, RPC/state); run release guards and whitespace checks; one scoped commit with only owned docs.
+- Owned files: `README.md`, `README.zh-CN.md`, `CHANGELOG.md`, `docs/guide.md`, `docs/guide.en.md`, `docs/architecture.md`, `docs/OPERATIONS.md`, `docs/KNOWLEDGE_BASE.md`, `.agents/workstreams/session-notification-docs.md`.
+- Do not touch: `src/`, `test/`, `client.js`, `HANDOFF.md`, `docs/memory/`, `package.json`, `AGENTS.md`, other workstream files, release tags or npm.
+- Validation: `git diff --check` pass; `node scripts/verify-release.mjs` -> `release guard ok: dsh-notifier v0.14.2, documented tests=2175`; `node scripts/gen-channel-matrix.mjs --check` -> 28 channels consistent; `node --test test/session-notification-policy.test.mjs test/package-payload.test.mjs` -> 9/9 pass.
+- Adversarial review: Every claim was checked against `src/control-surface/session-notifications.mjs`, `src/notify.mjs`, `src/host/lifecycle.mjs`, `src/adapters/desktop*.mjs`, `client.js` and the branch workstreams. Fixed stale `0.14.1`/`2137` release facts in KNOWLEDGE_BASE and OPERATIONS; folded the duplicated pre-0.14.2 Unreleased entries into the 0.14.2 section; kept the released 2175 statistic instead of inventing a current-tree count. Kept the release boundary explicit (no profile change, no npm, no real-device claim). Added the event-switch gate, id-less approval path, unbound-notification mute limit and the missing desktop deep link so the docs do not over-promise.
+- Handoff: README and both guides describe the development-branch defaults, todo/goal inference, approval/survey settle window, overlay behavior, per-session mute, platform action limits and the absence of a desktop session deep link. Architecture records the single policy authority, overlay feed bounds, RPC and state keys. OPERATIONS records release facts, state keys, reset guidance and four diagnostics. CHANGELOG keeps 0.14.2 release history and adds a clearly unreleased section. Remaining for lead: full `npm test`, release decision, and the real-device gaps. Docs commit: `d6206bf`. This workstream record is committed separately after the docs commit; no source, HANDOFF, memory or release metadata was touched.
