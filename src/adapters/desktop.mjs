@@ -42,8 +42,10 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { NotifyError, ERROR_CODES } from './_shared.mjs'
+import { trustedSessionUrl, sessionActions, desktopActionCapabilities, startLinuxActions } from './desktop-actions.mjs'
 
 export const type = 'desktop'
+export { desktopActionCapabilities }
 
 /** 子进程硬超时（ms）：PowerShell 冷启动偶发慢，10s 足够且绝不悬挂调用方。 */
 const COMMAND_TIMEOUT_MS = 10_000
@@ -187,7 +189,7 @@ function toastTag() {
  * 内联的字面量只有三类：base64 编码、净化后的 AUMID、净化后的 Toast Tag——
  * 构建前逐个断言字符集，越界即抛（不可达的防御，宁可失败也不产出可疑脚本）。
  */
-function buildWindowsScript(title, body, aumid, tag, sound) {
+function buildWindowsScript(title, body, aumid, tag, sound, sessionUrl = null) {
   const titleB64 = base64Utf8(title)
   const bodyB64 = base64Utf8(body)
   if (!BASE64_RE.test(titleB64) || !BASE64_RE.test(bodyB64) || !APP_ID_RE.test(aumid) || !TAG_RE.test(tag)) {
@@ -195,6 +197,14 @@ function buildWindowsScript(title, body, aumid, tag, sound) {
   }
   // 静音策略：sound off 时用 <audio silent="true"/>（系统 toast 默认会响提示音）
   const audio = sound ? '' : '<audio silent="true"/>'
+  // URL already passed exact local-origin/session-route validation. Still encode it
+  // before PS interpolation and XML-escape after decoding.
+  const urlB64 = base64Utf8(sessionUrl ?? '')
+  const actionLines = sessionUrl ? [
+    `  $u=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${urlB64}'))`,
+    '  $eu=[System.Security.SecurityElement]::Escape($u)',
+    '  $actions=\'<actions><action content="Open session" activationType="protocol" arguments="\'+$eu+\'"/></actions>\'',
+  ] : ["  $actions=''"]
   // WinRT toast：Show() 正常返回即视为已被系统接收（accepted），不再补固定睡眠——
   // 早先的 Start-Sleep 300ms 只是让 PowerShell 进程多活 300ms，白白拉长每次发送的可见返回延迟。
   // WinRT 抛错才走 System.Windows.Forms 气球（NotifyIcon）。两点平台事实：
@@ -212,7 +222,8 @@ function buildWindowsScript(title, body, aumid, tag, sound) {
     '  [Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime] | Out-Null',
     '  $et=[System.Security.SecurityElement]::Escape($t)',
     '  $eb=[System.Security.SecurityElement]::Escape($b)',
-    `  $xmlText='<toast><visual><binding template="ToastGeneric"><text>'+$et+'</text><text>'+$eb+'</text></binding></visual>${audio}</toast>'`,
+    ...actionLines,
+    `  $xmlText='<toast><visual><binding template="ToastGeneric"><text>'+$et+'</text><text>'+$eb+'</text></binding></visual>${audio}'+$actions+'</toast>'`,
     '  $xml=New-Object Windows.Data.Xml.Dom.XmlDocument',
     '  $xml.LoadXml($xmlText)',
     '  $toast=[Windows.UI.Notifications.ToastNotification]::new($xml)',
@@ -251,7 +262,7 @@ function buildWindowsScript(title, body, aumid, tag, sound) {
  * @param {string|null} probe - Windows AUMID（win32 用；非非空字符串时回落 PowerShell AUMID）。
  * @returns {{ file: string, args: string[] } | { unsupported: string, hint?: string }}
  */
-export function buildDesktopCommand(platform, resolved, msg, probe = null) {
+export function buildDesktopCommand(platform, resolved, msg, probe = null, options = {}) {
   if (msg?.silent === true) return { unsupported: 'silent' }
   const title = clampText(msg?.title, TITLE_MAX)
   const body = clampText(msg?.content, BODY_MAX)
@@ -272,7 +283,7 @@ export function buildDesktopCommand(platform, resolved, msg, probe = null) {
   }
   if (platform === 'win32') {
     const aumid = sanitizeAumid(probe)
-    const script = buildWindowsScript(title, body, aumid, toastTag(), sound)
+    const script = buildWindowsScript(title, body, aumid, toastTag(), sound, trustedSessionUrl(options))
     return {
       file: 'powershell.exe',
       args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShell(script)],
@@ -469,16 +480,20 @@ async function aumidFor(resolved) {
  * - macOS：osascript（行为与原实现一致）。
  * @returns {Promise<void>} 失败一律抛 NotifyError（中文指引），由上层渠道级 try/catch 兜住。
  */
-export async function send(resolved, msg) {
+export async function send(resolved, msg, options = {}) {
   const platform = process.platform
   if (msg?.silent === true) return
   if (platform === 'win32') {
-    const command = buildDesktopCommand(platform, resolved, msg, await aumidFor(resolved))
+    const command = buildDesktopCommand(platform, resolved, msg, await aumidFor(resolved), options)
     await runCommand(command.file, command.args)
     return
   }
   if (platform === 'linux') {
     const primary = buildDesktopCommand(platform, resolved, msg)
+    if (sessionActions(options).length > 0 && await startLinuxActions(primary, options, {
+      run: runCommand, spawn: spawnImpl,
+      warn: (text) => { try { console.error(`[dsh-notifier] ${text}`) } catch { /* diagnostics only */ } },
+    })) return
     try {
       await runCommand(primary.file, primary.args)
       return
