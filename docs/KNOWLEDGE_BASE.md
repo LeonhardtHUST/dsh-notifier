@@ -2,15 +2,15 @@
 
 这是人类和 agent 的导航页。每个问题尽量只指向一个权威来源；运行时真相仍是 `src/` 与 `test/`，版本真相是 `package.json`。
 
-> 当前工作线：`@leonhardthust/dsh-notifier@0.14.2` 已发布；npm latest、GitHub Release 和 tag `v0.14.2` 指向 `128f7f5`。fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 发布链已配置。目标宿主为 DSH `0.2.2-rc.3`，Windows 11 26H2 桌面 Toast 已实测，Linux 与已认证 Native UI 端到端证据仍单独记录。开发分支另有未发布的会话通知策略工作，不改变这里的发布基线。
+> 当前发布线：`@leonhardthust/dsh-notifier@0.15.0` 已发布。tag `v0.15.0` 指向 `7d72ba3`；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 已包含该版本。目标宿主为 DSH `0.2.2-rc.3`；已认证界面和系统通知动作的真机证据仍单独记录。
 
 ## 当前基线
 
-- 当前发布线：**0.14.2**（2026-11-18；tag `v0.14.2` / npm latest / GitHub Release 已完成，OIDC provenance 对应 `128f7f5`）：通知来源标签、远程抑制、焦点浮层和 Windows Toast 延迟修复已完成；`0.14.1`（`58507ac`）和 `0.14.0` 的 tag/Release/npm 记录保留。
-- 已发布基线测试：`2175`（2175 pass，0 fail，0 skip；隔离临时 `DSH_HOME`，Node test 并发上限 4）。历史 v0.14.1 为 `2137`，v0.14.0 为 `2084`，v0.13.1 为 `2011`；v0.13.0 为 `1985`；v0.12.0 为 `1831`；v0.11.0 为 `1816`；历史 v0.10.1/v0.10.2 为 `1616`。
-- 开发分支另有未发布的会话通知策略（浮层/系统/远程矩阵、会话静音、原生动作和事件分类），不属于 0.14.2 的发布事实，也没有真机证据；实现真相仍以 `src/` 和 `test/` 为准。
+- 当前发布线：**0.15.0**（2026-11-19，GitHub Release / npm latest / OIDC provenance 已确认）。纳入会话通知策略、会话静音、原生动作与可配置浮层；插件设置显示「消息通知 / Notification」。
+- 已发布基线测试：`2231` 项（本地 Windows 2230 pass，0 fail，1 symlink skip；隔离 `DSH_HOME`，Node test 并发上限 4）。历史 v0.14.2 为 `2175`，v0.14.1 为 `2137`，v0.14.0 为 `2084`。
+- 运行时与兼容性继续以 `src/`、`test/` 及包 manifest 为准；实现验证不等于真机验收。
 - 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`dev` 做开发、`main` 做发布；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `dev` 的审查 PR。
-- 生态收录：v0.14.2 已发布；Awesome DSH / dshfind 的公开描述刷新是发布后的外部同步步骤，不影响仓内版本事实。
+- Awesome DSH / dshfind 是独立目录；其版本与描述刷新不属于 npm 发布流程。
 - Node.js ESM、Node `>=22`、无生产依赖、无构建步骤；28 个出站渠道，Telegram/Feishu/QQ Bot/WxPusher/WeChat iLink/DingTalk 六个入站控制通道。
 - v0.12 起 DSH Native「通知与控制」是日常主控制面（Sidebar/Main + Plugins 入口）；Standalone Web 管理台只监听 `127.0.0.1`，降级为 Advanced / Recovery；YAML / CLI 是高级、自动化与 headless 入口。出站保存 Hot Apply，不重启。
 - Native 与 Web/admin 的问题结算均复用 Control Core；desktop `ask_user` 没有安全宿主接口，不能声称桌面结算或双端共享。当前目标宿主为 DSH `0.2.2-rc.3`（精确 `engines.dsh`，旧 `0.2.1-*`/`0.1.7-*` 不再声明）；provider/device 级验证仍按 `docs/memory/risks.md` 单独记录。

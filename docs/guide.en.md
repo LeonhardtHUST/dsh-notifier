@@ -108,7 +108,7 @@ System actions differ by platform:
 - Linux exposes Open and the configured mute durations only when `notify-send` supports `--action` and `--wait`, with at most eight observers running for 60 seconds each. Action output is not delivery evidence. Older `notify-send` builds and the `gdbus` fallback stay text-only.
 - macOS is text only.
 
-The installed Desktop app accepts only `dsh://open` to focus itself and has no session deep link. Open uses the loopback web URL and is handled by the authenticated client. Settings live in `local:session-notifications` and `local:session-mutes` and are read through Native RPC. This branch does not change an installed profile or publish to npm.
+The installed Desktop app accepts only `dsh://open` to focus itself and has no session deep link. Open uses the loopback web URL and is handled by the authenticated client. Settings live in `local:session-notifications` and `local:session-mutes` and are managed through Native RPC without changing other plugin configuration.
 
 ## 3. Understand Hot Apply
 
