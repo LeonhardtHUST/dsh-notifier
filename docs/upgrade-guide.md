@@ -162,14 +162,14 @@ dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 
 1. 实际版本 `0.14.0+`；
 2. DSH 已重启；
-3. Host 是 `0.2.2-rc.3`；
+3. Host 是 `0.2.2-rc.5`；
 4. `client.js` 确实在已安装包里；
 5. web profile 的 Client Module/slot 没报错。
 
-声明范围（`engines.dsh`，rc.3 预检只认它、忽略 `@deepseek-ai/dsh*` peer）：
+声明范围（`engines.dsh`，宿主预检只认它、忽略 `@deepseek-ai/dsh*` peer）：
 
 ```text
-0.2.2-rc.3
+0.2.2-rc.5
 ```
 
 `0.1.7-*` 与 `0.2.1-*` 不再声明支持：安装时会因 manifest 版本门被宿主预检拒绝（除非手工授予
@@ -211,9 +211,10 @@ dsh plugin add dsh-notifier@0.13.1 --profile <profile名>
 
 不要为了兼容降级手改运行中的 state 文件，也不要让原包与 fork 同时存在。
 
-## 七、DSH 0.2.2-rc.3 与 0.14.0 新数据 namespace
+## 七、DSH 宿主版本与 0.14.0 新数据 namespace
 
-本插件只对 DSH **0.2.2-rc.3** 声明激活（`engines.dsh`）。rc.3 的安装预检在插件自报
+本插件自 0.15.1 起只对 DSH **0.2.2-rc.5** 声明激活（`engines.dsh`）；0.14.x/0.15.0 那批包声明的是 rc.3。
+宿主的安装预检在插件自报
 `engines.dsh` 时只认它、忽略 `@deepseek-ai/dsh*` peer，因此无需任何版本豁免即可安装。
 
 ### 七.1 旧状态不再作为权威

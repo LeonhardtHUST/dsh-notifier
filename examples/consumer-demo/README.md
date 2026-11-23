@@ -24,7 +24,7 @@ export function apply(ctx) {
 }
 ```
 
-回调式 `ctx.inject(['notifier'], cb)` 在 DSH 0.2.2-rc.3 可用，适合把本包当可选依赖；未声明 inject 直接访问 `ctx.notifier` 仍会抛错。见 PLUGINS.md「服务获取」。
+回调式 `ctx.inject(['notifier'], cb)` 在 DSH 0.2.2-rc.5 可用，适合把本包当可选依赖；未声明 inject 直接访问 `ctx.notifier` 仍会抛错。见 PLUGINS.md「服务获取」。
 
 ## 3. push 推送
 

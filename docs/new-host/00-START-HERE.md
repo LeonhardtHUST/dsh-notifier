@@ -1,6 +1,6 @@
 # 全任务交接入口
 
-> **历史说明（2026-11-17）**：本目录是 2026-10-31 DSH `0.2.1-rc.5` 任务包（T00-T29 计划）的归档参考，保留当时的计划、审计和证据，便于追溯，不是当前执行入口。当前目标、授权和进度以根 [HANDOFF.md](../../HANDOFF.md) 与 `.agents/workstreams/rc3-*.md` 为准；[STATUS.json](STATUS.json) 保留历史状态，不表示 T05-T29 已完成。现行宿主目标是 DSH `0.2.2-rc.3`，见 [compatibility-matrix.md](../compatibility-matrix.md)。本文件以下内容保持归档原样。
+> **历史说明（2026-11-17）**：本目录是 2026-10-31 DSH `0.2.1-rc.5` 任务包（T00-T29 计划）的归档参考，保留当时的计划、审计和证据，便于追溯，不是当前执行入口。当前目标、授权和进度以根 [HANDOFF.md](../../HANDOFF.md) 与 `.agents/workstreams/dsh-rc5-and-single-main.md` 为准；[STATUS.json](STATUS.json) 保留历史状态，不表示 T05-T29 已完成。现行宿主目标是 DSH `0.2.2-rc.5`，见 [compatibility-matrix.md](../compatibility-matrix.md)。本文件以下内容保持归档原样。
 
 更新时间：2026-10-31。交付状态：**设计/计划已建立，产品实现未开始**。
 

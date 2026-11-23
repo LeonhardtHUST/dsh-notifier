@@ -137,15 +137,15 @@ Check:
 
 1. installed package is `0.14.0+`;
 2. DSH restarted;
-3. Host is `0.2.2-rc.3`;
+3. Host is `0.2.2-rc.5`;
 4. installed package contains `client.js`;
 5. the web profile reports no client-module/slot failure.
 
-Declared requirement (`engines.dsh`; the rc.3 preflight reads it alone and ignores the
+Declared requirement (`engines.dsh`; the host preflight reads it alone and ignores the
 `@deepseek-ai/dsh*` peers):
 
 ```text
-0.2.2-rc.3
+0.2.2-rc.5
 ```
 
 The `0.1.7-*` and `0.2.1-*` lines are no longer supported: the host preflight rejects the
@@ -177,9 +177,10 @@ downgrade. Reconfigure in the original package if needed, and re-pair.
 Do not edit a live state file by hand, and do not keep the original package and the fork
 installed together.
 
-## 7. DSH 0.2.2-rc.3 migration and the new data namespace
+## 7. DSH host version and the new data namespace
 
-This plugin declares activation against DSH **0.2.2-rc.3** only (`engines.dsh`). The rc.3
+Since 0.15.1 this plugin declares activation against DSH **0.2.2-rc.5** only (`engines.dsh`); the
+0.14.x/0.15.0 packages declared rc.3. The host
 install preflight reads an own `engines.dsh` alone and ignores the `@deepseek-ai/dsh*`
 peers, so the package installs with **no version exemption**.
 
