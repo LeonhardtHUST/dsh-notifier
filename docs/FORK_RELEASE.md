@@ -1,12 +1,12 @@
 # Fork release and upstream sync
 
-This fork, `LeonhardtHUST/dsh-notifier`, publishes the scoped package `@leonhardthust/dsh-notifier`. The upstream project `THEWOLFWALKER/dsh-notifier` stays canonical for source and attribution. Development happens on `dev`; releases happen on `main`. Upstream changes arrive through reviewed pull requests to `dev`.
+This fork, `LeonhardtHUST/dsh-notifier`, publishes the scoped package `@leonhardthust/dsh-notifier`. The upstream project `THEWOLFWALKER/dsh-notifier` stays canonical for source and attribution. `main` is the fork's only long-lived branch: development and releases both happen there. Upstream changes arrive through reviewed pull requests to `main`.
 
 ## What the automation does
 
 `.github/workflows/release.yml` runs the full release gate on `main` when `package.json` changes, or when a maintainer starts it manually. The publish job uses npm trusted publishing (OIDC) only. It never reads an `NPM_TOKEN` or `NODE_AUTH_TOKEN`, and the release guard fails if either variable is set. The workflow deliberately omits `actions/setup-node`'s `registry-url` input because that input exports a placeholder `NODE_AUTH_TOKEN`; `publishConfig.registry` in `package.json` pins the registry instead.
 
-`.github/workflows/upstream-sync.yml` checks upstream `dev` and `main` once a day. It merges upstream `dev` into `automation/upstream-sync` and opens or updates a pull request against `dev`. It never pushes to `dev` or `main`, never publishes, and never runs upstream code in a job that holds a write token. After pushing the bot branch it dispatches the read-only CI workflow on that branch with `workflow_dispatch`, because GitHub does not start workflow runs from `GITHUB_TOKEN`-created pushes or pull requests. The pull request is for human review; the bot never approves or merges it.
+`.github/workflows/upstream-sync.yml` checks upstream `dev` and `main` once a day. It merges upstream `dev` into `automation/upstream-sync` from the fork `main` head and opens or updates a pull request against `main`. It never pushes to `main`, never publishes, and never runs upstream code in a job that holds a write token. After pushing the bot branch it dispatches the read-only CI workflow on that branch with `workflow_dispatch`, because GitHub does not start workflow runs from `GITHUB_TOKEN`-created pushes or pull requests. The pull request is for human review; the bot never approves or merges it.
 
 ## One-time npm setup
 
@@ -110,10 +110,10 @@ The first trusted-publishing run for an existing bootstrap version is a tag-only
 The sync workflow runs at 06:17 UTC every day, on manual dispatch, and when CI for the sync pull request fails.
 
 1. Fetch upstream `dev` and `main` without checking out upstream code, and compare their commit ids.
-2. Create or reset `automation/upstream-sync` from the fork `dev` head.
+2. Create or reset `automation/upstream-sync` from the fork `main` head.
 3. Merge upstream `dev` with a merge commit.
 4. Restore fork-owned paths on every merge path, clean or conflicted, and re-pin `package.json` identity, public publish config, and the `docs/FORK_RELEASE.md` payload entry while keeping upstream version and metadata.
-5. Push the branch and open or update the one open pull request against `dev`.
+5. Push the branch and open or update the one open pull request against `main`.
 6. Dispatch the read-only CI workflow on `automation/upstream-sync` with `workflow_dispatch`.
 
 Entry guards: the sync refuses a dirty worktree and refuses to run outside GitHub Actions unless `UPSTREAM_SYNC_ALLOW_LOCAL=1` is set explicitly. It records the bot branch head before merging and pushes with `--force-with-lease`, so a concurrent update fails the run instead of being dropped. Network git operations time out after 120 s, local git operations after 60 s, and GitHub API calls after 30 s. A timeout takes the same issue notification path as any other failure.
@@ -152,7 +152,7 @@ Upstream changes to workflow files, release scripts, or their tests need a manua
 
 `E422` about provenance or repository information: `package.json.repository.url` must be `https://github.com/LeonhardtHUST/dsh-notifier`. The release guard checks this before the publish job starts.
 
-The sync job cannot create a pull request: enable "Allow GitHub Actions to create and approve pull requests". Also check that the `dev` branch exists and the pull request API scope is available to `GITHUB_TOKEN`.
+The sync job cannot create a pull request: enable "Allow GitHub Actions to create and approve pull requests". Also check that the `main` branch exists and the pull request API scope is available to `GITHUB_TOKEN`.
 
 The workflow does not run on schedule: confirm `release.yml` and `upstream-sync.yml` are present on `main`.
 

@@ -25,8 +25,8 @@ test('v0.13 invariant: default mode blocks provider destinations before fetch', 
   )
 })
 
-test('v0.13 invariant skeleton: CI runs dev and cancels stale runs', () => {
-  assert.match(workflow, /branches:\s*\[main, master, dev\]/)
+test('v0.13 invariant skeleton: CI runs main and cancels stale runs', () => {
+  assert.match(workflow, /branches:\s*\[main, master\]/)
   assert.match(workflow, /concurrency:/)
   assert.match(workflow, /cancel-in-progress:\s*true/)
 })

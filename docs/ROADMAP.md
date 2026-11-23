@@ -12,7 +12,7 @@
 2. **公共面无 breaking**：`ctx.notifier` 服务形态、`push(message, options)` 签名、`sent` 事件 payload、`flush()` 语义全部不变，`ctx.notifier.version` 保持 `0.7`。只做**新增**，不做修改/删除。
 3. **双语**：所有面向手机/管理台的新增文案必须进 `src/strings.mjs`，zh 与 en 键一一对应，禁止硬编码字符串进 UI/命令回执。
 4. **fail-closed 默认**：新能力默认关闭或最小权限，需显式开启；未知来源/未配对身份一律拒绝。
-5. **分支纪律**（[VERSIONING.md](VERSIONING.md)）：每个工作项用 `codex/<topic>` 分支，测试全绿后合入 `dev`。不从 dirty tree 发布。
+5. **分支纪律**（[VERSIONING.md](VERSIONING.md)）：`main` 是唯一长期分支，每个工作项直接在 `main` 上小步提交，测试全绿后再发版。不从 dirty tree 发布。
 6. **测试不变式**：`npm test` 全绿；`dshQuality.testCount`、README 徽章、`HANDOFF.md` 与实际测试数一致（见「发布收口」）。
 
 ## 工作项总览

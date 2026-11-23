@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 export const FORK_REPOSITORY = 'LeonhardtHUST/dsh-notifier'
 export const UPSTREAM_REPOSITORY = 'THEWOLFWALKER/dsh-notifier'
-export const TARGET_BRANCH = 'dev'
+export const TARGET_BRANCH = 'main'
 export const SYNC_BRANCH = 'automation/upstream-sync'
 export const SYNC_WORKFLOW_FILE = 'upstream-sync.yml'
 export const FORK_PACKAGE_NAME = '@leonhardthust/dsh-notifier'
@@ -295,13 +295,13 @@ export function buildPullRequestBody({
     '## Automated upstream sync',
     '',
     `- Upstream: \`${UPSTREAM_REPOSITORY}@${String(upstreamSha ?? '').slice(0, 12)}\` (\`dev\`)`,
-    `- Fork base: \`${String(baseSha ?? '').slice(0, 12)}\` (\`dev\`)`,
+    `- Fork base: \`${String(baseSha ?? '').slice(0, 12)}\` (\`${TARGET_BRANCH}\`)`,
     `- Merged commits: ${commits.length}`,
     `- Changed files: ${changedFiles.length}`,
   ]
   if (conflicts.length > 0) lines.push(`- Protected conflicts auto-resolved: ${neutralizeMentions(conflicts.join(', '), { maxLength: 500 })}`)
   lines.push(
-    `- Upstream \`main\`: ${upstreamMain ? `\`${String(upstreamMain).slice(0, 12)}\`` : 'unavailable'}${upstreamMainAhead ? ' (has commits not in `dev`)' : ' (contained in `dev`)'}`,
+    `- Upstream \`main\`: ${upstreamMain ? `\`${String(upstreamMain).slice(0, 12)}\`` : 'unavailable'}${upstreamMainAhead ? ' (has commits not in the fork base)' : ' (contained in the fork base)'}`,
     '',
     'Fork-owned files are restored after the merge: `package.json` keeps the scoped name and fork repository URL; workflows, release/upstream-sync scripts, their tests, and `docs/FORK_RELEASE.md` stay fork-owned. `client.js`, `cordis.patch.yml`, and `test/.npmignore` also stay fork-owned; port upstream changes to them by hand.',
     '',
@@ -329,7 +329,7 @@ export const ISSUE_KINDS = {
   conflict: 'Upstream merge has conflicts outside fork-owned paths.',
   'ci-failure': 'The automated upstream sync pull request failed CI.',
   'sync-failure': 'The automated upstream sync could not complete (fetch, push, or GitHub API failure).',
-  'main-divergence': 'Upstream main has commits that are not contained in upstream dev; the fork dev sync cannot include them.',
+  'main-divergence': 'Upstream main has commits that are not contained in upstream dev; the fork main-line sync cannot include them.',
   success: 'The automated upstream sync is healthy again.',
 }
 
@@ -554,7 +554,7 @@ export async function syncUpstream({
     upstreamMain = revParse(cwd, upstreamMainRef)
     upstreamMainAhead = git(cwd, ['merge-base', '--is-ancestor', upstreamMainRef, upstreamRef], { allowFailure: true }).status !== 0
     divergence = upstreamMainAhead
-      ? `upstream main ${upstreamMain.slice(0, 12)} has commits not contained in upstream dev ${upstreamSha.slice(0, 12)}; the dev sync cannot include them. Review upstream main/release changes and port them deliberately.`
+      ? `upstream main ${upstreamMain.slice(0, 12)} has commits not contained in upstream dev ${upstreamSha.slice(0, 12)}; the main-line sync cannot include them. Review upstream main/release changes and port them deliberately.`
       : ''
     // Record the branch head this run is based on. The push below only succeeds
     // if the remote still points at this commit.

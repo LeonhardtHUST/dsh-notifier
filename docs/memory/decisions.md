@@ -18,7 +18,7 @@ Tracked `.agents/` workstreams and `docs/memory/` are the authority for collabor
 
 ## Repository Roles And Relay Cadence
 
-The maintained fork `LeonhardtHUST/dsh-notifier` publishes `@leonhardthust/dsh-notifier`; `THEWOLFWALKER/dsh-notifier` remains the upstream source. Fork development lands on `dev`; reviewed releases land on `main`. Upstream synchronization prepares PRs to `dev` and must preserve fork package identity and release policy. Agents record their own scope, tests and commit in tracked workstreams; the lead consolidates `HANDOFF.md`. See `docs/FORK_RELEASE.md`.
+The maintained fork `LeonhardtHUST/dsh-notifier` publishes `@leonhardthust/dsh-notifier`; `THEWOLFWALKER/dsh-notifier` remains the upstream source. `main` is the fork's only long-lived branch: development and releases both happen there, and a release is the same tree tagged and published through the existing OIDC workflow. Upstream synchronization prepares PRs to `main` and must preserve fork package identity and release policy. Agents record their own scope, tests and commit in tracked workstreams; the lead consolidates `HANDOFF.md`. See `docs/FORK_RELEASE.md`.
 
 ## Security Defaults
 

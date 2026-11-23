@@ -134,13 +134,13 @@ function response(status, body) {
   }
 }
 
-test('sync context is pinned to the fork, upstream, and dev', () => {
-  assert.deepEqual(validateSyncContext({ repository: FORK_REPOSITORY, upstreamRepository: UPSTREAM_REPOSITORY, targetBranch: 'dev' }), [])
-  const failures = validateSyncContext({ repository: 'someone/else', upstreamRepository: 'evil/repo', targetBranch: 'main' })
+test('sync context is pinned to the fork, upstream, and main', () => {
+  assert.deepEqual(validateSyncContext({ repository: FORK_REPOSITORY, upstreamRepository: UPSTREAM_REPOSITORY, targetBranch: 'main' }), [])
+  const failures = validateSyncContext({ repository: 'someone/else', upstreamRepository: 'evil/repo', targetBranch: 'dev' })
   assert.equal(failures.length, 3)
   assert.ok(failures.some((failure) => failure.includes(FORK_REPOSITORY)))
   assert.ok(failures.some((failure) => failure.includes(UPSTREAM_REPOSITORY)))
-  assert.ok(failures.some((failure) => failure.includes('dev')))
+  assert.ok(failures.some((failure) => failure.includes('main')))
 })
 
 test('protected paths cover fork workflows, automation, and the package manifest', () => {
@@ -442,7 +442,7 @@ test('CI failure alert finds the open sync PR and upserts the issue', async () =
     env: {
       FORK_REPOSITORY,
       UPSTREAM_REPOSITORY,
-      SYNC_TARGET_BRANCH: 'dev',
+      SYNC_TARGET_BRANCH: 'main',
       GH_TOKEN: 'test-token',
       RUN_URL: 'https://github.com/LeonhardtHUST/dsh-notifier/actions/runs/1',
       RUN_ID: '1',

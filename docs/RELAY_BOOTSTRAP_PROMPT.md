@@ -15,15 +15,15 @@
 一、仓库接管
 
 1. 确认当前目录是 dsh-notifier 工程仓库。
-2. 如果当前目录不是仓库，从公开仓库的 dev 分支拉取：
-   https://github.com/THEWOLFWALKER/dsh-notifier （单仓库：dev 分支开发、main 分支发布）
+2. 如果当前目录不是仓库，从维护 fork 的 main 分支拉取：
+   https://github.com/LeonhardtHUST/dsh-notifier （单仓库：main 为唯一长期分支，开发与发版都在 main 上）
 3. 执行并记录：
    git status --short --branch
    git log --oneline -5
    git fetch --prune
    git pull --ff-only
 4. 读取 AGENTS.md、docs/KNOWLEDGE_BASE.md、docs/memory/README.md、docs/memory/、相关 .agents/workstreams/ 和 HANDOFF.md。
-5. 从 dev 分支创建目的明确的 codex/<topic> 分支；禁止直接在 main 上开发。若工作区有未提交改动，先记录并保护它们，不得擅自丢弃。
+5. 直接在 main 上工作，按单一逻辑小步提交；不创建长期 dev 或 codex/<topic> 分支，临时实验分支用完即删。若工作区有未提交改动，先记录并保护它们，不得擅自丢弃。
 
 二、必须遵守的工程原则
 
@@ -71,7 +71,7 @@
 2. 更新 HANDOFF.md 的当前快照。它是下一位 agent 的工程交接，不是聊天流水账；请合并/替换过期内容，不要无止境追加历史。
 3. 执行项目本地 .agents/skills/neat-freak/SKILL.md，检查 AGENTS.md、README、docs、memory、workstreams、HANDOFF、版本和链接是否一致。
 4. 只提交一个逻辑清晰、范围单一的 commit；不要提交 node_modules、package-lock.json、凭据、状态文件、日志或本地生成物。
-5. 推送到私有开发仓库，并确认工作区干净：
+5. 推送到 origin main，并确认工作区干净：
    git push
    git status --short --branch
 6. 最终回复只报告：身份、完成内容、修改文件、review 结果、测试结果、已知失败/验证缺口、风险、下一步、commit SHA 和 push 状态。

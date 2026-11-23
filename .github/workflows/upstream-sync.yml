@@ -1,8 +1,8 @@
 name: Upstream sync
 
 # Daily check of THEWOLFWALKER/dsh-notifier dev/main. The merge is only ever
-# proposed as a pull request against the fork's dev branch; it never publishes,
-# never touches main, and never runs upstream code inside a write-scoped job.
+# proposed as a pull request against the fork's main branch; it never publishes,
+# never pushes to main, and never runs upstream code inside a write-scoped job.
 #
 # Repository setting prerequisite: Settings -> Actions -> General -> Workflow
 # permissions -> enable "Allow GitHub Actions to create and approve pull
@@ -40,11 +40,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       FORK_REPOSITORY: ${{ github.repository }}
       UPSTREAM_REPOSITORY: THEWOLFWALKER/dsh-notifier
-      SYNC_TARGET_BRANCH: dev
+      SYNC_TARGET_BRANCH: main
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: main
           fetch-depth: 0
       - name: Merge upstream into the automation branch
         # Only git plumbing and the GitHub API run here. The merged tree is first
@@ -70,7 +70,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       FORK_REPOSITORY: ${{ github.repository }}
       UPSTREAM_REPOSITORY: THEWOLFWALKER/dsh-notifier
-      SYNC_TARGET_BRANCH: dev
+      SYNC_TARGET_BRANCH: main
       RUN_URL: ${{ github.event.workflow_run.html_url }}
       RUN_ID: ${{ github.event.workflow_run.id }}
     steps:

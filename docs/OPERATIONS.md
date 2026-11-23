@@ -119,7 +119,7 @@ Recovery address: use the actual `Web 管理台已就绪` startup line; never gu
 
 | Symptom | First checks |
 |---|---|
-| No Native Sidebar entry | package is `0.14.2+`, DSH restarted, Host `0.2.2-rc.3`, client module served |
+| No Native Sidebar entry | package is `0.14.2+`, DSH restarted, Host `0.2.2-rc.5`, client module served |
 | Native panel fails to load | DSH slot/client errors, `client.js` package payload, Connection/webServer control route |
 | No outbound delivery | Channels health, real test result, `channel-selfcheck.mjs`, adapter validation |
 | Saved outbound still uses old credentials | Confirm actual registry version; current line must read the live `OutboundSource` |
@@ -145,7 +145,7 @@ Provider-specific media, callback ACK and long-connection behavior remains evide
 Declared host requirement (`engines.dsh`, exact):
 
 ```text
-0.2.2-rc.3
+0.2.2-rc.5
 ```
 
 The optional `@deepseek-ai/dsh-session` peer marker and `dshWorkshop.compatibility.dshVersions` name the same version. Release evidence levels are documented in [compatibility-matrix.md](compatibility-matrix.md). `verify-host-compat.mjs` is part of the release guard.
@@ -165,7 +165,7 @@ Before publishing:
 9. turn on **Desktop notifications** and send a desktop test notification; expect a system toast on Windows 10/11, or the NotifyIcon balloon fallback when WinRT is unavailable (that path has no audio control);
 10. verify the next real notifier operation sees the saved channel without restart;
 11. exercise one inbound command / question path when available;
-12. optionally run `node test/host/harness.smoke.mjs` against the installed 0.2.2-rc.3 host for the disposable web/headless seam smoke.
+12. optionally run `node test/host/harness.smoke.mjs` against the installed 0.2.2-rc.5 host for the disposable web/headless seam smoke.
 
 The Windows desktop path was exercised on a real Windows 11 26H2 machine (toast, empty title/body, boundary scripts). Linux delivery has contract coverage only; run it once on a GNOME or KDE Plasma desktop before calling it verified. This line did not get an end-to-end run inside the installed DSH GUI because direct browser access to that GUI requires authentication. The Native scroll container was verified in a real browser reproducing the host `main` slot fixed-height geometry; repeat the installed-UI scroll and desktop-notification smoke when an authenticated GUI session is available.
 
@@ -179,24 +179,21 @@ Repository model:
 
 - Canonical upstream: `THEWOLFWALKER/dsh-notifier` (attribution and history; no unreviewed pushes).
 - Maintained fork: `LeonhardtHUST/dsh-notifier`, published as `@leonhardthust/dsh-notifier`.
-- `dev` — development (fork topic branches merge here first).
-- `main` — release/public docs (fork release line).
+- `main` — the fork's only long-lived branch; feature work, docs and releases all happen there.
 
 See [FORK_RELEASE.md](FORK_RELEASE.md) for the fork's reviewed-sync and OIDC publish automation.
 
 Typical release flow:
 
 ```text
-git switch dev
-git status --short --branch
+git switch main
+git status --short --branch        # clean
 npm test
 node scripts/verify-release.mjs
 node scripts/gen-channel-matrix.mjs --check
-
-git switch main
-git merge --ff-only dev
 npm pack --dry-run --json
-# tag the reviewed release commit, then publish
+# commit the version bump on main, tag the release commit, push main with tags
+# publish through the OIDC workflow
 ```
 
 Never retag or force-push published history. Docs-only release-fact follow-ups may legitimately put `main` ahead of the annotated tag.
