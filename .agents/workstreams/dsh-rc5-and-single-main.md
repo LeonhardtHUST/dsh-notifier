@@ -3,7 +3,7 @@
 - Agent identity: `lead | DSH Agent Teams (three Flash workers, one Sol read-only reviewer) | Windows 11, DSH Desktop 0.2.2-rc.5`
 - Agent: `lead`
 - Branch: `main` (single long-lived branch after consolidation)
-- Status: `done`
+- Status: `done` (published as 0.15.1)
 - Start/end: `2026-11-23 -> 2026-11-23`
 - Scope: move the declared DSH host line from exact `0.2.2-rc.3` to exact `0.2.2-rc.5` with evidence, and converge the repository onto one `main` line with every other branch deleted.
 - Plan:
@@ -31,4 +31,4 @@
 
 ## Handoff
 
-Branch `dev` and every `codex/*` branch were deleted locally and on `origin`; divergent history is preserved as `archive/v0.13.1-release`, `archive/core-distillation-v015`, `archive/thewolfwalker-patch-2`. `0.15.1` is prepared but not published. Next step: tag and publish through the existing OIDC workflow, then install the npm artifact in a disposable profile and exercise the Native entry once.
+Branch `dev` and every `codex/*` branch were deleted locally and on `origin`; divergent history is preserved as `archive/v0.13.1-release`, `archive/core-distillation-v015`, `archive/thewolfwalker-patch-2`. `0.15.1` is published: tag `v0.15.1` at `8961617`, GitHub Release created, npm latest `0.15.1`, tarball 334 files with the local SHA-512. The OIDC publish itself succeeded on the first run; the post-publish registry check failed on propagation and passed on rerun, so no duplicate publish. Next step: install the npm artifact in a disposable profile and exercise the Native entry once.

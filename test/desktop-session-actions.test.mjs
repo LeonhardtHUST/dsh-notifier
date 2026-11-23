@@ -186,17 +186,25 @@ test('adapter marks Linux spawn unverified and mute during failed probe suppress
 
 test('real subprocess validates action stdout protocol without shell execution', async () => {
   let invoked
-  await new Promise(async (resolve, reject) => {
-    try {
-      const started = await startLinuxActions(command, { sessionId: 'abc', onMute: (minutes) => { invoked = minutes; resolve() } }, {
-        run: async () => ({ stdout: '--action --wait' }),
-        spawn: (_file, args, settings) => {
-          assert.ok(args.includes('--action=mute-15=Mute 15 min'))
-          return spawn(process.execPath, ['-e', 'process.stdout.write("mute-15\\n")'], settings)
-        },
-      })
-      assert.equal(started, true)
-    } catch (error) { reject(error) }
-  })
+  // The observer deliberately unrefs its child and its TTL timer so a notification never
+  // keeps a host alive. A test process has nothing else to hold the loop open, so the child's
+  // close event can be dropped on a fast Linux runner and `node --test` reports the pending
+  // test as cancelled. Hold one ref'd guard timer for the duration of the assertion.
+  let guard
+  try {
+    await new Promise(async (resolve, reject) => {
+      guard = setTimeout(() => reject(new Error('action callback was not observed within 15s')), 15_000)
+      try {
+        const started = await startLinuxActions(command, { sessionId: 'abc', onMute: (minutes) => { invoked = minutes; resolve() } }, {
+          run: async () => ({ stdout: '--action --wait' }),
+          spawn: (_file, args, settings) => {
+            assert.ok(args.includes('--action=mute-15=Mute 15 min'))
+            return spawn(process.execPath, ['-e', 'process.stdout.write("mute-15\\n")'], settings)
+          },
+        })
+        assert.equal(started, true)
+      } catch (error) { reject(error) }
+    })
+  } finally { clearTimeout(guard) }
   assert.equal(invoked, 15)
 })

@@ -4,7 +4,7 @@
 
 ## 任务状态 type:state
 
-- `0.15.0` 仍是已发布版本（tag `v0.15.0` → `7d72ba3`，npm latest）。`0.15.1` 已在 `main` 上准备好，**尚未发布**。
+- `0.15.1` 已发布：tag `v0.15.1` → `8961617`，[GitHub Release](https://github.com/LeonhardtHUST/dsh-notifier/releases/tag/v0.15.1)，npm latest `0.15.1`。registry tarball 334 文件，SHA-512 与本地 pack 一致；OIDC 首次发布成功，仅发布后即时校验因注册表传播失败，改判后重跑该 job 通过，未重复发布。
 - 宿主要求已从精确 `0.2.2-rc.3` 迁到精确 `0.2.2-rc.5`（本机安装的 Desktop 版本，Cordis 4.1.0）。未改动 `src/`、`client.js`，未增加运行时依赖、监听端口或鉴权方式。
 - 仓库收敛为单一主线：`main` 是唯一长期分支，`dev` 与全部 `codex/*` 分支已在本地和 `origin` 删除。分歧历史保留为 tag `archive/v0.13.1-release`、`archive/core-distillation-v015`、`archive/thewolfwalker-patch-2`。
 
@@ -30,6 +30,6 @@
 
 ## 下一步 type:goal
 
-- 在干净 `main` 上跑完整门禁后发布 0.15.1：打 tag、走既有 OIDC 工作流，随后核对 npm 版本与 tarball。
-- 授权后在单独测试环境从 npm 安装 0.15.1，重启 Desktop 确认「通知与控制」入口、一次出站通知与一次远程命令；真机证据仍单独记录。
+- 在单独测试环境从 npm 安装 `0.15.1`，重启 Desktop 确认「通知与控制」入口、一次出站通知与一次远程命令；真机证据仍单独记录。
 - Linux GNOME/KDE 通知动作、Windows 通知点击与 macOS 纯文本回落仍是待补的真机缺口（见 `docs/memory/risks.md`）。
+- 下次宿主 prerelease 前进时同步改 manifest 三处 + 矩阵行 + 守卫测试；单版本字面量是精确匹配，漏改只会被静默跳过。

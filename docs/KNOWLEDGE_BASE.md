@@ -2,11 +2,11 @@
 
 这是人类和 agent 的导航页。每个问题尽量只指向一个权威来源；运行时真相仍是 `src/` 与 `test/`，版本真相是 `package.json`。
 
-> 当前线：`@leonhardthust/dsh-notifier@0.15.1` 准备发布（宿主兼容迁到 DSH `0.2.2-rc.5`）；npm latest 仍是 `0.15.0`，tag `v0.15.0` 指向 `7d72ba3`。`main` 是唯一长期分支。已认证界面和系统通知动作的真机证据仍单独记录。
+> 当前发布线：`@leonhardthust/dsh-notifier@0.15.1` 已发布（宿主兼容迁到 DSH `0.2.2-rc.5`）；tag `v0.15.1` 指向 `8961617`，npm latest 与 GitHub Release 均已确认。`main` 是唯一长期分支。已认证界面和系统通知动作的真机证据仍单独记录。
 
 ## 当前基线
 
-- 当前线：**0.15.1**（未发布），把宿主声明迁到精确 `0.2.2-rc.5` 并复核 22 条 seam；npm latest 仍是 **0.15.0**（2026-11-19，GitHub Release / npm latest / OIDC provenance 已确认），纳入会话通知策略、会话静音、原生动作与可配置浮层；插件设置显示「消息通知 / Notification」。
+- 当前发布线：**0.15.1**（2026-11-23，GitHub Release / npm latest / OIDC provenance 已确认），把宿主声明迁到精确 `0.2.2-rc.5` 并复核 22 条 seam；功能面沿用 0.15.0 的会话通知策略、会话静音、原生动作与可配置浮层；插件设置显示「消息通知 / Notification」。
 - 已发布基线测试：`2231` 项（本地 Windows 2230 pass，0 fail，1 symlink skip；隔离 `DSH_HOME`，Node test 并发上限 4）。历史 v0.14.2 为 `2175`，v0.14.1 为 `2137`，v0.14.0 为 `2084`。
 - 运行时与兼容性继续以 `src/`、`test/` 及包 manifest 为准；实现验证不等于真机验收。
 - 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`main` 是唯一长期分支（开发与发布都在 main）；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `main` 的审查 PR。
