@@ -551,7 +551,10 @@ test('装配 + emit：push 一次 → dsh-notifier/sent 收到冻结的 metadata
     const { event, payload } = state.emitted[0]
     assert.equal(event, 'dsh-notifier/sent')
     assert.equal(payload.ok, true)
-    assert.deepEqual(payload.delivered, ['webhook'])
+    // Local OS channels (desktop/bell) only appear in delivered when the current machine can
+    // actually show a notification, so this assertion pins the remote channel it configures;
+    // the local paths have their own adapter tests.
+    assert.deepEqual(payload.delivered.filter((type) => type !== 'desktop' && type !== 'bell'), ['webhook'])
     assert.deepEqual(payload.source, { kind: 'plugin', name: 'emit-test' })
     assert.equal('message' in payload, false)
     assert.equal(payload.titleLength, 2)
