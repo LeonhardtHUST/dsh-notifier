@@ -2,18 +2,18 @@
 
 这是人类和 agent 的导航页。每个问题尽量只指向一个权威来源；运行时真相仍是 `src/` 与 `test/`，版本真相是 `package.json`。
 
-> 当前发布线：`@leonhardthust/dsh-notifier@0.15.0` 已发布。tag `v0.15.0` 指向 `7d72ba3`；fork `LeonhardtHUST/dsh-notifier` 的 `dev`/`main` 已包含该版本。目标宿主为 DSH `0.2.2-rc.3`；已认证界面和系统通知动作的真机证据仍单独记录。
+> 当前线：`@leonhardthust/dsh-notifier@0.15.1` 准备发布（宿主兼容迁到 DSH `0.2.2-rc.5`）；npm latest 仍是 `0.15.0`，tag `v0.15.0` 指向 `7d72ba3`。`main` 是唯一长期分支。已认证界面和系统通知动作的真机证据仍单独记录。
 
 ## 当前基线
 
-- 当前发布线：**0.15.0**（2026-11-19，GitHub Release / npm latest / OIDC provenance 已确认）。纳入会话通知策略、会话静音、原生动作与可配置浮层；插件设置显示「消息通知 / Notification」。
+- 当前线：**0.15.1**（未发布），把宿主声明迁到精确 `0.2.2-rc.5` 并复核 22 条 seam；npm latest 仍是 **0.15.0**（2026-11-19，GitHub Release / npm latest / OIDC provenance 已确认），纳入会话通知策略、会话静音、原生动作与可配置浮层；插件设置显示「消息通知 / Notification」。
 - 已发布基线测试：`2231` 项（本地 Windows 2230 pass，0 fail，1 symlink skip；隔离 `DSH_HOME`，Node test 并发上限 4）。历史 v0.14.2 为 `2175`，v0.14.1 为 `2137`，v0.14.0 为 `2084`。
 - 运行时与兼容性继续以 `src/`、`test/` 及包 manifest 为准；实现验证不等于真机验收。
-- 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`dev` 做开发、`main` 做发布；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `dev` 的审查 PR。
+- 单仓库 fork 模型：`LeonhardtHUST/dsh-notifier` 是维护和发布仓库，`main` 是唯一长期分支（开发与发布都在 main）；`THEWOLFWALKER/dsh-notifier` 是上游，自动同步只创建到 fork `main` 的审查 PR。
 - Awesome DSH / dshfind 是独立目录；其版本与描述刷新不属于 npm 发布流程。
 - Node.js ESM、Node `>=22`、无生产依赖、无构建步骤；28 个出站渠道，Telegram/Feishu/QQ Bot/WxPusher/WeChat iLink/DingTalk 六个入站控制通道。
 - v0.12 起 DSH Native「通知与控制」是日常主控制面（Sidebar/Main + Plugins 入口）；Standalone Web 管理台只监听 `127.0.0.1`，降级为 Advanced / Recovery；YAML / CLI 是高级、自动化与 headless 入口。出站保存 Hot Apply，不重启。
-- Native 与 Web/admin 的问题结算均复用 Control Core；desktop `ask_user` 没有安全宿主接口，不能声称桌面结算或双端共享。当前目标宿主为 DSH `0.2.2-rc.3`（精确 `engines.dsh`，旧 `0.2.1-*`/`0.1.7-*` 不再声明）；provider/device 级验证仍按 `docs/memory/risks.md` 单独记录。
+- Native 与 Web/admin 的问题结算均复用 Control Core；desktop `ask_user` 没有安全宿主接口，不能声称桌面结算或双端共享。当前目标宿主为 DSH `0.2.2-rc.5`（精确 `engines.dsh`，旧 `0.2.1-*`/`0.1.7-*` 不再声明）；provider/device 级验证仍按 `docs/memory/risks.md` 单独记录。
 
 ## 阅读顺序
 

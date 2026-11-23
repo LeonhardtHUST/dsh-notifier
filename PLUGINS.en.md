@@ -20,7 +20,7 @@ export function apply(ctx) {
 
 ## Getting the service: static declaration recommended, ctx.inject works for optional deps
 
-Verified on DSH `0.2.2-rc.3` (Cordis 4.1.0):
+Verified on DSH `0.2.2-rc.5` (Cordis 4.1.0):
 
 | Form | rc.3 result | Notes |
 |---|---|---|
@@ -173,7 +173,8 @@ This is an explicit type-only subpath: the package root (`@leonhardthust/dsh-not
 
 ## On-device verification record
 
-- **2026-11-17 · DSH 0.2.2-rc.3 (Desktop web + headless, disposable DSH_HOME)**: the plugin mounted `ctx.inject(['connection','webServer'], …)` in the web profile and served `/dsh-notifier` behind admission (401 unauthenticated); the headless profile activated without connection/webServer and delivered a local webhook notification (19/19 host smoke). This is the current evidence that static inject is still recommended and callback-style `ctx.inject` works on rc.3; the old rc.6 “callback never fires” result applies only to that older line.
+- **2026-11-23 · DSH 0.2.2-rc.5 (Desktop web + headless, disposable DSH_HOME)**: the same 19 host-smoke checks pass on rc.5: the web profile mounts `/dsh-notifier` behind admission (401 unauthenticated), the headless profile activates without connection/webServer and delivers a local webhook notification, and the Cordis event-context contract passes 9/9. The manifest declares the exact `0.2.2-rc.5` line; `engines.dsh` is an exact match, so a stale rc.3 literal is skipped by the rc.5 host.
+- **2026-11-17 · DSH 0.2.2-rc.3 (Desktop web + headless, disposable DSH_HOME, historical)**: the plugin mounted `ctx.inject(['connection','webServer'], …)` in the web profile and served `/dsh-notifier` behind admission (401 unauthenticated); the headless profile activated without connection/webServer and delivered a local webhook notification (19/19 host smoke). This is the historical evidence that static inject is still recommended and callback-style `ctx.inject` works on rc.3; the old rc.6 “callback never fires” result applies only to that older line.
 - **2026-08-16 · DSH 0.1.0-rc.6 (historical)**: a static-inject consumer resolved a real service, the `dsh-notifier/sent` event was visible across plugins, and the zero-channel semantics matched the design; callback-style `ctx.inject` did not fire on that line. Install note: when the host manages dependencies with pnpm, manually overwriting `node_modules` is rolled back; upgrade through the DSH CLI plugin command instead.
 
 ## FAQ

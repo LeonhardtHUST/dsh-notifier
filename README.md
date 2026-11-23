@@ -1,6 +1,6 @@
 This maintained fork publishes as `@leonhardthust/dsh-notifier` from [LeonhardtHUST/dsh-notifier](https://github.com/LeonhardtHUST/dsh-notifier). The original project is [THEWOLFWALKER/dsh-notifier](https://github.com/THEWOLFWALKER/dsh-notifier). See the [fork release guide](docs/FORK_RELEASE.md) for publishing and upstream synchronization.
 
-Target host: DSH **0.2.2-rc.3**. This release includes the development branch's fail-closed state schema migration: back up your state before upgrading; legacy unversioned identity and credential state requires explicit reconfiguration. Do not install the scoped fork alongside the original package in one profile: they share the runtime service, route, and plugin row.
+Target host: DSH **0.2.2-rc.5**. This line includes the 0.14.0 fail-closed state schema migration: back up your state before upgrading; legacy unversioned identity and credential state requires explicit reconfiguration. Do not install the scoped fork alongside the original package in one profile: they share the runtime service, route, and plugin row.
 
 
 <p align="center">
@@ -25,7 +25,7 @@ Bring DeepSeek Harness to your phone: notifications, approvals, questions, remot
 
 </div>
 
-`@leonhardthust/dsh-notifier@0.15.0` · test/ 2231 tests · 2231 automated contract tests
+`@leonhardthust/dsh-notifier@0.15.1` · test/ 2231 tests · 2231 automated contract tests
 
 ## What it does
 

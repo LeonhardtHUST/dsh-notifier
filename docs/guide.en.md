@@ -19,7 +19,7 @@ For a first install, get **notifications** working before adding remote control.
 
 Copy this to an AI/agent with terminal access:
 
-> Install or upgrade `@leonhardthust/dsh-notifier` on this machine. First detect the active DSH profile and current install source, verify the installed DSH is `0.2.2-rc.3` and Node is supported, and preserve the current configuration. Do not modify unrelated plugins or print any token/secret. If the original `dsh-notifier` package is present, confirm and remove it. Restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry; when upgrading 0.13.x to 0.14.0, back up the old state first and expect to re-pair/reconfigure. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
+> Install or upgrade `@leonhardthust/dsh-notifier` on this machine. First detect the active DSH profile and current install source, verify the installed DSH is `0.2.2-rc.5` and Node is supported, and preserve the current configuration. Do not modify unrelated plugins or print any token/secret. If the original `dsh-notifier` package is present, confirm and remove it. Restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry; when upgrading 0.13.x to 0.14.0, back up the old state first and expect to re-pair/reconfigure. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
 
 Full procedure: [AI_INSTALL.en.md](AI_INSTALL.en.md).
 
@@ -29,7 +29,7 @@ Full procedure: [AI_INSTALL.en.md](AI_INSTALL.en.md).
 dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile-name>
 ```
 
-This package declares exact compatibility with DSH `0.2.2-rc.3` only (`engines.dsh`); other
+This package declares exact compatibility with DSH `0.2.2-rc.5` only (`engines.dsh`); other
 releases are rejected by the install preflight. Do not install the original `dsh-notifier`
 package alongside the fork: both contend for the same plugin id and state directory.
 

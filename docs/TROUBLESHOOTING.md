@@ -19,7 +19,7 @@ AI 只读定位
 
 把下面整段发给能看当前终端/日志的 AI：
 
-> 请帮我排查 `@leonhardthust/dsh-notifier`。第一轮只做只读诊断，不卸载、不重装、不删除 state、不修改密钥。确认实际包版本和安装来源、是否与原包 `dsh-notifier` 共存、DSH 版本（本包只声明 0.2.2-rc.3）与 profile、Node 版本、`client.js` 是否装载、问题属于 Native UI / 出站 / 入站 / 身份配对 / provider / 存储 / 网络中的哪一层，并做最小复现。日志和配置必须脱敏，绝不能输出 Token/Secret/Authorization。先给我证据和结论；如果是明确、低风险、本地可修复的问题，再给修复步骤。若仍解决不了，请按项目 `docs/DIAGNOSTICS.md` 生成可直接上报的 Support Report。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
+> 请帮我排查 `@leonhardthust/dsh-notifier`。第一轮只做只读诊断，不卸载、不重装、不删除 state、不修改密钥。确认实际包版本和安装来源、是否与原包 `dsh-notifier` 共存、DSH 版本（本包只声明 0.2.2-rc.5）与 profile、Node 版本、`client.js` 是否装载、问题属于 Native UI / 出站 / 入站 / 身份配对 / provider / 存储 / 网络中的哪一层，并做最小复现。日志和配置必须脱敏，绝不能输出 Token/Secret/Authorization。先给我证据和结论；如果是明确、低风险、本地可修复的问题，再给修复步骤。若仍解决不了，请按项目 `docs/DIAGNOSTICS.md` 生成可直接上报的 Support Report。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
 
 ## AI 第一轮必须查什么
 
@@ -29,7 +29,7 @@ AI 只读定位
 
 ```text
 Node
-DSH / Harness（本包只声明 0.2.2-rc.3）
+DSH / Harness（本包只声明 0.2.2-rc.5）
 @leonhardthust/dsh-notifier
 profile
 安装来源

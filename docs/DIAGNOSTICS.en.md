@@ -11,7 +11,7 @@ Record:
 ```text
 OS
 Node
-DSH/Harness (this package declares 0.2.2-rc.3 only)
+DSH/Harness (this package declares 0.2.2-rc.5 only)
 DSH profile
 @leonhardthust/dsh-notifier version
 install source

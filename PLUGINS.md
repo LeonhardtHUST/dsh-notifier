@@ -19,9 +19,9 @@ export function apply(ctx) {
 
 ## 服务获取：推荐静态声明，可选依赖可用 ctx.inject
 
-DSH `0.2.2-rc.3`（Cordis 4.1.0）的实测结论：
+DSH `0.2.2-rc.5`（Cordis 4.1.0）的实测结论：
 
-| 写法 | rc.3 结论 | 说明 |
+| 写法 | rc.5 结论 | 说明 |
 |---|---|---|
 | ✅ 静态声明 `export const inject = ['notifier']` | **推荐** | apply 执行时服务已就绪（宿主保证等待）；探针实测解析到真服务 |
 | ✅ 回调式 `ctx.inject(['notifier'], cb)` | **可用（可选依赖）** | 本插件自己的 Native 通道就用它等待 `connection`/`webServer`；回调在服务就绪后执行，宿主没有该服务时保持降级 |
@@ -171,7 +171,8 @@ import type { NotifierFacade, NotifyMessage, PushResult } from '@leonhardthust/d
 
 ## 真机验证记录
 
-- **2026-11-17 · DSH 0.2.2-rc.3（Desktop web + headless，disposable DSH_HOME）**：本插件在 web profile 装配 `ctx.inject(['connection','webServer'], …)` 并挂上 `/dsh-notifier` 路由（未认证请求返回 401），在 headless profile 无 connection/webServer 仍正常激活并交付本地 webhook 通知（19/19 host smoke）。这是“静态 inject 仍是推荐形态、回调式 `ctx.inject` 在 rc.3 可用”的当前证据；旧 rc.6 的“回调不触发”结论只适用于当时版本，不再作为当前契约。
+- **2026-11-23 · DSH 0.2.2-rc.5（Desktop web + headless，disposable DSH_HOME）**：同一套 19 项 host smoke 在 rc.5 上 19/19 通过：web profile 挂上 `/dsh-notifier` 路由（未认证 401），headless profile 无 connection/webServer 仍激活并交付本地 webhook 通知，Cordis 事件上下文 9/9。声明面同步迁到精确 `0.2.2-rc.5`；`engines.dsh` 是精确匹配，旧 rc.3 字面量会被 rc.5 宿主整行跳过。
+- **2026-11-17 · DSH 0.2.2-rc.3（Desktop web + headless，disposable DSH_HOME，历史）**：本插件在 web profile 装配 `ctx.inject(['connection','webServer'], …)` 并挂上 `/dsh-notifier` 路由（未认证请求返回 401），在 headless profile 无 connection/webServer 仍正常激活并交付本地 webhook 通知（19/19 host smoke）。这是“静态 inject 仍是推荐形态、回调式 `ctx.inject` 在 rc.3 可用”的历史证据；旧 rc.6 的“回调不触发”结论只适用于当时版本，不再作为当前契约。
 - **2026-08-16 · DSH 0.1.0-rc.6（历史）**：静态 inject 消费方解析到真服务，`dsh-notifier/sent` 跨插件可见，零渠道语义符合设计；当时的回调式 `ctx.inject` 不触发。安装注意：宿主用 pnpm 管理依赖时，手动覆盖 `node_modules` 会被回滚，升级请用 DSH CLI 的插件安装命令。
 
 ## FAQ

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Host compatibility guard: keep engines.dsh, the declared @deepseek-ai/dsh-session peer range,
 // the DSH host matrix in docs/compatibility-matrix.md, and
-// dshWorkshop.compatibility.dshVersions in one mechanically checked contract. The rc.3
-// preflight reads an own `engines.dsh` alone and ignores the @deepseek-ai/dsh* peers, so the
+// dshWorkshop.compatibility.dshVersions in one mechanically checked contract. The current
+// DSH preflight reads an own `engines.dsh` alone and ignores the @deepseek-ai/dsh* peers, so the
 // two declarations must name exactly the same verified versions. Zero runtime dependencies:
 // only exact or `||`-joined exact versions are accepted, so a hand-written parser replaces
 // the `semver` package.
@@ -66,7 +66,7 @@ export function verifyHostCompat(packageJson, matrix) {
 
   const enginesDsh = packageJson?.engines?.dsh
   check(typeof enginesDsh === 'string' && enginesDsh.trim() !== '',
-    'engines.dsh must declare the verified DSH host range (the rc.3 preflight reads it alone)')
+    'engines.dsh must declare the verified DSH host range (the DSH preflight reads it alone)')
   const engineAlternatives = parsePeerRange(enginesDsh)
   check(engineAlternatives.length > 0, 'engines.dsh must declare at least one version')
   for (const alternative of engineAlternatives) {

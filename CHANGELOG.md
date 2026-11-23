@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.1] - 2026-11-23
+
+目标宿主从精确 `0.2.2-rc.3` 迁到精确 `0.2.2-rc.5`（当前安装的 DSH Desktop，Cordis 4.1.0）。插件行为与配置格式不变，`src/` 与 `client.js` 未改动。
+
+### 宿主兼容
+
+- `engines.dsh`、可选 peer `@deepseek-ai/dsh-session` 与 `dshWorkshop.compatibility.dshVersions` 同步为 `0.2.2-rc.5`。单个 prerelease 字面量是精确匹配：声明 rc.3 的包在 rc.5 宿主上会被整行跳过（只进 `skippedBundles`，不报错），因此三处必须一起前进。rc.3 在兼容矩阵中降为未复验行。
+- 22 条宿主 seam 在 rc.5 源码上逐条复核：工具注册、agent 列表、session 事件、审批与提问 waterfall、connection 准入与 RPC、webServer 路由、附件写入、客户端清单与四个 slot、Cordis 4.1.0 选项。形状与 rc.3 一致，无需改调用点。
+- 升级指南 rc.3→rc.5 区间只有两条（DeepSeek 拒答错误码、DeepSeek 模型默认搜索），均不涉及本插件消费的接口。
+- rc.5 宿主冒烟 19/19（web 路由 401、headless 真实 webhook POST、Cordis 事件上下文 9/9）；此前同一冒烟在旧 manifest 上先复现了整行跳过，证明预检生效，未使用宿主豁免。
+
+### 验证边界
+
+- `npm test`：2231 项，2230 通过、0 失败、1 个 Windows symlink 用例跳过（隔离 `DSH_HOME`）。
+- 未驱动浏览器，槽位渲染与 `__ModuleLoader__` 真实执行未复验；未做真机 provider/device 投递验证。机器上只有 rc.5 构建，rc.4→rc.5 无法逐行 diff，新增字段按 rc.5 实物对照记录。
+
 ## [0.15.0] - 2026-11-19
 
 DeepSeek Harness 插件设置中的显示名为中文「消息通知」、英文「Notification」。npm 包名、配置键和运行时 ID 保持不变。

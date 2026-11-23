@@ -6,12 +6,12 @@ This document is intended for an AI/agent with terminal access to the machine.
 
 - Package: `@leonhardthust/dsh-notifier` (maintained fork).
 - Repository: `https://github.com/LeonhardtHUST/dsh-notifier`. The original project is `https://github.com/THEWOLFWALKER/dsh-notifier`; attribution is preserved.
-- Host: this package declares exact compatibility with DSH `0.2.2-rc.3` only (`engines.dsh`). Older or newer DSH releases are rejected by the install preflight unless the user explicitly grants a host exemption; do not claim support for an unverified release.
+- Host: this package declares exact compatibility with DSH `0.2.2-rc.5` only (`engines.dsh`). Older or newer DSH releases are rejected by the install preflight unless the user explicitly grants a host exemption; do not claim support for an unverified release.
 - The original `dsh-notifier` package and this fork must not be installed together: both export the same service/event names and would contend for the same plugin id and state directory. Remove the original before installing the fork.
 
 ## One-sentence prompt
 
-> Install or upgrade `@leonhardthust/dsh-notifier` on this machine. First detect the active DSH profile and current install source, verify the installed DSH is `0.2.2-rc.3` and Node is supported, and preserve the existing configuration. Do not modify unrelated plugins or print any token/secret. If the original `dsh-notifier` package is present, confirm and remove it so the two never coexist. Restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry; if this upgrades 0.13.x to 0.14.0, tell me to back up the old state first and expect to re-pair/reconfigure. Then report the commands you ran, the result, and any remaining problem. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
+> Install or upgrade `@leonhardthust/dsh-notifier` on this machine. First detect the active DSH profile and current install source, verify the installed DSH is `0.2.2-rc.5` and Node is supported, and preserve the existing configuration. Do not modify unrelated plugins or print any token/secret. If the original `dsh-notifier` package is present, confirm and remove it so the two never coexist. Restart the relevant DSH Host once, verify the actual installed version and the **Notify & Control** entry; if this upgrades 0.13.x to 0.14.0, tell me to back up the old state first and expect to re-pair/reconfigure. Then report the commands you ran, the result, and any remaining problem. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
 
 ## Full agent prompt
 
@@ -26,7 +26,7 @@ https://github.com/THEWOLFWALKER/dsh-notifier
 First perform read-only inspection:
 
 1. Identify Node.js version.
-2. Identify the DSH/Harness version and confirm 0.2.2-rc.3 (the only engines.dsh line this package declares).
+2. Identify the DSH/Harness version and confirm 0.2.2-rc.5 (the only engines.dsh line this package declares).
 3. Detect the active/common DSH profile. If multiple profiles exist and you cannot determine the target, list them and ask instead of guessing.
 4. Check whether @leonhardthust/dsh-notifier is installed, and whether the original dsh-notifier package is also present.
 5. Identify the install source: registry, file:, Git, or manual node_modules.
@@ -65,7 +65,7 @@ After installation:
 Final report:
 - profile
 - Node version
-- DSH version (0.2.2-rc.3 expected)
+- DSH version (0.2.2-rc.5 expected)
 - package version/source before
 - whether the original package was removed
 - actual version after

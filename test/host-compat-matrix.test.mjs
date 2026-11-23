@@ -1,11 +1,11 @@
-// DSH host compatibility contract (rc.3 line).
+// DSH host compatibility contract (rc.5 line).
 // Locks the agreement between engines.dsh, the @deepseek-ai/dsh-session peer range,
 // the DSH host matrix in docs/compatibility-matrix.md, and
 // dshWorkshop.compatibility.dshVersions. The same helper backs
 // scripts/verify-host-compat.mjs and `npm run verify:release`, so a hand-edited
 // manifest can no longer drift from the evidence-backed rows.
 //
-// rc.3 fact (verified in @deepseek-ai/dsh-app-boot/lib/index.js:1102-1148): an own
+// rc.5 fact (verified in @deepseek-ai/dsh-app-boot/lib/index.js:1100-1108,1124): an own
 // engines.dsh decides alone and peerDependencies are ignored, so both declarations
 // must name exactly the verified rows.
 import test from 'node:test'
@@ -19,7 +19,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
 const matrix = parseMatrix(readFileSync(resolve(root, 'docs/compatibility-matrix.md'), 'utf8'))
 
-const VERIFIED = ['0.2.2-rc.3']
+const VERIFIED = ['0.2.2-rc.5']
 const EXACT_RANGE = VERIFIED.join(' || ')
 
 test('host compat: the shipped manifest and matrix verify cleanly', () => {
@@ -43,13 +43,13 @@ test('host compat: the peer range is exact or OR-exact, never a guessed range', 
   assert.deepEqual(parsePeerRange(range), VERIFIED)
 })
 
-test('host compat: engines.dsh names exactly the verified rows (the rc.3 gate reads it alone)', () => {
+test('host compat: engines.dsh names exactly the verified rows (the rc.5 gate reads it alone)', () => {
   assert.equal(packageJson.engines.dsh, EXACT_RANGE)
   assert.equal(/[\^~><*]/.test(packageJson.engines.dsh), false, 'no guessed host range')
   assert.deepEqual(parsePeerRange(packageJson.engines.dsh), VERIFIED)
 })
 
-test('host compat: the Cordis peer tracks the rc.3 install', () => {
+test('host compat: the Cordis peer tracks the rc.5 install', () => {
   assert.equal(packageJson.peerDependencies['@deepseek-ai/cordis'], '~4.1.0')
 })
 
@@ -59,8 +59,8 @@ test('host compat: dshWorkshop lists exactly the verified rows', () => {
   assert.deepEqual(verified, VERIFIED)
 })
 
-test('host compat: the previous rc.5 and historical 0.1.x claims are unverified and excluded', () => {
-  for (const version of ['0.2.1-rc.5', '0.1.0-rc.6']) {
+test('host compat: the previous rc.3 line, rc.5-line 0.2.1 and historical 0.1.x claims are unverified and excluded', () => {
+  for (const version of ['0.2.2-rc.3', '0.2.1-rc.5', '0.1.0-rc.6']) {
     const row = matrix.runtimes.find((entry) => entry.version === version)
     assert.notEqual(row, undefined, `${version} must stay visible as a historical row`)
     assert.notEqual(row.status, 'verified')
@@ -92,9 +92,9 @@ test('host compat: drift is caught — a verified runtime must be covered by bot
     ...packageJson,
     peerDependencies: { ...packageJson.peerDependencies, '@deepseek-ai/dsh-session': '0.1.0-rc.6' },
   }
-  assert.equal(verifyHostCompat(peerDrift, matrix).some((line) => /verified runtime 0\.2\.2-rc\.3 is not covered/.test(line)), true)
+  assert.equal(verifyHostCompat(peerDrift, matrix).some((line) => /verified runtime 0\.2\.2-rc\.5 is not covered/.test(line)), true)
   const engineDrift = { ...packageJson, engines: { ...packageJson.engines, dsh: '0.1.0-rc.6' } }
-  assert.equal(verifyHostCompat(engineDrift, matrix).some((line) => /verified runtime 0\.2\.2-rc\.3 is not covered by engines\.dsh/.test(line)), true)
+  assert.equal(verifyHostCompat(engineDrift, matrix).some((line) => /verified runtime 0\.2\.2-rc\.5 is not covered by engines\.dsh/.test(line)), true)
 })
 
 test('host compat: drift is caught — a guessed caret range is rejected in both declarations', () => {

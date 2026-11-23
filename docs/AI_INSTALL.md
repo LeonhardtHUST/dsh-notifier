@@ -19,14 +19,14 @@
 
 - 包名：`@leonhardthust/dsh-notifier`（维护 fork）。
 - 仓库：`https://github.com/LeonhardtHUST/dsh-notifier`；原作者项目是 `https://github.com/THEWOLFWALKER/dsh-notifier`，归属保留。
-- 宿主：只对 DSH `0.2.2-rc.3` 精确声明兼容（`engines.dsh`）。更早或更新的 DSH 版本会被安装预检拦下，除非用户明确使用宿主豁免；不要宣称支持未验证版本。
+- 宿主：只对 DSH `0.2.2-rc.5` 精确声明兼容（`engines.dsh`）。更早或更新的 DSH 版本会被安装预检拦下，除非用户明确使用宿主豁免；不要宣称支持未验证版本。
 - 原包 `dsh-notifier` 与本 fork **不要同时安装**：两者导出同一组服务/事件名，会争用同一插件 id 与状态目录。迁移时先移除原包，再安装本包。
 
 ## 一句话版本
 
 直接复制：
 
-> 请帮我在这台机器上安装或升级 `@leonhardthust/dsh-notifier` 最新稳定版。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH 是 `0.2.2-rc.3`、Node 满足要求，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。如果机器上装过原包 `dsh-notifier`，先确认并移除它，避免两者共存。安装后重启对应 DSH Host 一次，确认实际安装版本和「通知与控制」入口；如果这是从 0.13.x 升级到 0.14.0，提醒我先备份旧 state，并准备重新配对/重新配置。最后把你执行过的命令、结果和仍存在的异常汇报给我。
+> 请帮我在这台机器上安装或升级 `@leonhardthust/dsh-notifier` 最新稳定版。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH 是 `0.2.2-rc.5`、Node 满足要求，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。如果机器上装过原包 `dsh-notifier`，先确认并移除它，避免两者共存。安装后重启对应 DSH Host 一次，确认实际安装版本和「通知与控制」入口；如果这是从 0.13.x 升级到 0.14.0，提醒我先备份旧 state，并准备重新配对/重新配置。最后把你执行过的命令、结果和仍存在的异常汇报给我。
 
 ## 完整 Agent 提示词
 
@@ -44,7 +44,7 @@ https://github.com/THEWOLFWALKER/dsh-notifier
 先做只读检查，不要直接改：
 
 1. 识别 Node.js 版本。
-2. 识别 DSH / Harness 版本，确认是 0.2.2-rc.3（本包只对此版本声明 engines.dsh）。
+2. 识别 DSH / Harness 版本，确认是 0.2.2-rc.5（本包只对此版本声明 engines.dsh）。
 3. 找出当前运行/常用的 DSH profile；如果明确只有一个就使用它，如果有多个且无法判断，不要猜，列出来让用户选择。
 4. 检查是否已经安装 @leonhardthust/dsh-notifier，以及是否同时装着原包 dsh-notifier。
 5. 检查安装来源：
@@ -88,7 +88,7 @@ https://github.com/THEWOLFWALKER/dsh-notifier
 
 - profile
 - Node 版本
-- DSH 版本（应为 0.2.2-rc.3）
+- DSH 版本（应为 0.2.2-rc.5）
 - 安装前包版本与来源
 - 是否移除了原包
 - 安装后实际版本

@@ -23,7 +23,7 @@ dsh-notifier 可以只当通知插件，也可以继续开启手机控制。
 
 把这句话发给能操作当前机器终端的 AI / Agent：
 
-> 请帮我在这台机器上安装或升级 `@leonhardthust/dsh-notifier` 最新稳定版。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH 是 `0.2.2-rc.3`、Node 满足要求，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。如果装着原包 `dsh-notifier`，先确认并移除它。安装后重启对应 DSH Host 一次，确认实际安装版本和「通知与控制」入口；从 0.13.x 升级到 0.14.0 时先备份旧 state 并准备重新配对。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
+> 请帮我在这台机器上安装或升级 `@leonhardthust/dsh-notifier` 最新稳定版。先自动识别当前正在使用的 DSH profile 和现有安装来源，确认 DSH 是 `0.2.2-rc.5`、Node 满足要求，并保护已有配置；不要修改无关插件，也不要打印任何 Token / Secret。如果装着原包 `dsh-notifier`，先确认并移除它。安装后重启对应 DSH Host 一次，确认实际安装版本和「通知与控制」入口；从 0.13.x 升级到 0.14.0 时先备份旧 state 并准备重新配对。项目：`https://github.com/LeonhardtHUST/dsh-notifier`
 
 完整 Agent 提示词：[AI_INSTALL.md](AI_INSTALL.md)。
 
@@ -39,7 +39,7 @@ dsh plugin add @leonhardthust/dsh-notifier@latest --profile <profile名>
 dsh plugin add @leonhardthust/dsh-notifier --profile <profile名>
 ```
 
-本包只对 DSH `0.2.2-rc.3` 声明精确兼容（`engines.dsh`）；其他版本会被安装预检拦下。
+本包只对 DSH `0.2.2-rc.5` 声明精确兼容（`engines.dsh`）；其他版本会被安装预检拦下。
 原包 `dsh-notifier` 与本 fork 不要同时安装：两者争用同一插件 id 与状态目录。迁移时先移除原包。
 
 安装后**重启 DSH 一次**，让 Host 插件和 `client.js` 装载。

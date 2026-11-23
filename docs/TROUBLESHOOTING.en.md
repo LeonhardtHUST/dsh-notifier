@@ -14,13 +14,13 @@ Do **not** start with uninstall/reinstall or state deletion. Preserve evidence.
 
 ## Copy/paste troubleshooting prompt
 
-> Help me troubleshoot `@leonhardthust/dsh-notifier`. The first pass must be read-only: do not uninstall, reinstall, delete state, or change credentials. Identify the actual package version and install source, whether the original `dsh-notifier` package is co-installed, DSH version (this package declares 0.2.2-rc.3 only) and profile, Node version, whether `client.js` is loaded, and whether the failure belongs to Native UI, outbound, inbound, identity/pairing, provider, storage, network, or Host compatibility. Build a minimal reproduction. Redact all logs/config and never print tokens, secrets, or Authorization headers. Report evidence and your conclusion first; only then propose a low-risk local fix if one is clear. If unresolved, generate a support report using `docs/DIAGNOSTICS.en.md`. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
+> Help me troubleshoot `@leonhardthust/dsh-notifier`. The first pass must be read-only: do not uninstall, reinstall, delete state, or change credentials. Identify the actual package version and install source, whether the original `dsh-notifier` package is co-installed, DSH version (this package declares 0.2.2-rc.5 only) and profile, Node version, whether `client.js` is loaded, and whether the failure belongs to Native UI, outbound, inbound, identity/pairing, provider, storage, network, or Host compatibility. Build a minimal reproduction. Redact all logs/config and never print tokens, secrets, or Authorization headers. Report evidence and your conclusion first; only then propose a low-risk local fix if one is clear. If unresolved, generate a support report using `docs/DIAGNOSTICS.en.md`. Project: `https://github.com/LeonhardtHUST/dsh-notifier`
 
 ## First-pass checklist
 
 Confirm:
 - Node version
-- DSH/Harness version (this package declares 0.2.2-rc.3 only)
+- DSH/Harness version (this package declares 0.2.2-rc.5 only)
 - active profile
 - actual @leonhardthust/dsh-notifier version
 - install source (`registry`, `file:`, Git, manual)

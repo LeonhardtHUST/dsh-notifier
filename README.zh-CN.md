@@ -1,6 +1,6 @@
 本维护分支以 `@leonhardthust/dsh-notifier` 发布，仓库为 [LeonhardtHUST/dsh-notifier](https://github.com/LeonhardtHUST/dsh-notifier)，上游原项目为 [THEWOLFWALKER/dsh-notifier](https://github.com/THEWOLFWALKER/dsh-notifier)。发布和上游同步见 [fork 发布指南](docs/FORK_RELEASE.md)。
 
-目标宿主为 DSH **0.2.2-rc.3**。本版包含 dev 分支的 fail-closed 状态格式迁移：升级前备份状态，未带版本标记的旧身份和凭据状态需要显式重新配置。同一 profile 不要同时安装 scoped fork 与原包，两者共用运行时服务、路由和插件行。
+目标宿主为 DSH **0.2.2-rc.5**。本线包含 0.14.0 的 fail-closed 状态格式迁移：升级前备份状态，未带版本标记的旧身份和凭据状态需要显式重新配置。同一 profile 不要同时安装 scoped fork 与原包，两者共用运行时服务、路由和插件行。
 
 <p align="center">
   <img src="docs/assets/readme-hero.png" alt="dsh-notifier — Agent ⇄ User, across every channel" width="100%">
@@ -24,7 +24,7 @@
 
 </div>
 
-`@leonhardthust/dsh-notifier@0.15.0` · test/ 2231 个测试 · 2231 个自动化契约测试
+`@leonhardthust/dsh-notifier@0.15.1` · test/ 2231 个测试 · 2231 个自动化契约测试
 
 ## 它解决什么
 

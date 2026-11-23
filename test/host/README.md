@@ -1,7 +1,7 @@
-# test/host — disposable DSH 0.2.2-rc.3 test harness
+# test/host — disposable DSH 0.2.2-rc.5 test harness
 
-Reusable infrastructure for driving the **installed** DSH 0.2.2-rc.3 host
-against a throwaway `DSH_HOME`. It backs the rc.3 host-smoke evidence.
+Reusable infrastructure for driving the **installed** DSH 0.2.2-rc.5 host
+against a throwaway `DSH_HOME`. It backs the rc.5 host-smoke evidence.
 
 Nothing here is a product file. `test/host/**` is deliberately **outside** the
 `npm test` glob (`test/*.test.mjs`), so it never runs as part of the unit suite.
@@ -22,11 +22,11 @@ $env:DSH_INSTALL_DIR = 'C:\...\resources\app.asar\dsh\node_modules\@deepseek-ai\
 $env:DSH_NODE_EXECUTABLE = 'C:\...\DeepSeek Harness.exe'
 ```
 
-## Host-rc3 vs provider-live (read this first)
+## Host-rc5 vs provider-live (read this first)
 
 | Tier | What it is | In scope? |
 |---|---|---|
-| **host-rc3** | The installed DSH 0.2.2-rc.3 CLI composing the real Cordis tree, with our plugin activated in a disposable profile. External I/O stays **local/controlled** (loopback HTTP receiver). | **Yes — this harness.** |
+| **host-rc5** | The installed DSH 0.2.2-rc.5 CLI composing the real Cordis tree, with our plugin activated in a disposable profile. External I/O stays **local/controlled** (loopback HTTP receiver). | **Yes — this harness.** |
 | **provider-live** | A real IM/provider account or device receiving an actual push. | **No.** Out of scope; never claim it passed. |
 
 Everything this harness proves is host-level (activation, tool/service wiring, the

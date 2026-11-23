@@ -19,7 +19,7 @@
 ```text
 OS:
 Node:
-DSH/Harness: （本包只声明 0.2.2-rc.3）
+DSH/Harness: （本包只声明 0.2.2-rc.5）
 DSH profile:
 @leonhardthust/dsh-notifier:
 安装来源:
